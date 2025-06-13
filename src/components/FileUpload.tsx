@@ -36,11 +36,15 @@ const FileUpload = ({ onFileSelect, selectedFile }: FileUploadProps) => {
   }, [onFileSelect]);
 
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    console.log("Input de arquivo acionado:", e.target.files);
     const files = e.target.files;
     if (files && files.length > 0) {
       const file = files[0];
+      console.log("Arquivo selecionado:", file.name, file.type, file.size);
       if (isValidFileType(file)) {
         onFileSelect(file);
+      } else {
+        console.log("Tipo de arquivo inválido:", file.type);
       }
     }
   };
@@ -52,7 +56,9 @@ const FileUpload = ({ onFileSelect, selectedFile }: FileUploadProps) => {
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       'text/plain'
     ];
-    return validTypes.includes(file.type) && file.size <= 50 * 1024 * 1024; // 50MB
+    const isValid = validTypes.includes(file.type) && file.size <= 50 * 1024 * 1024; // 50MB
+    console.log("Validação do arquivo:", file.type, "válido:", isValid);
+    return isValid;
   };
 
   const formatFileSize = (bytes: number) => {
@@ -65,6 +71,14 @@ const FileUpload = ({ onFileSelect, selectedFile }: FileUploadProps) => {
 
   const removeFile = () => {
     onFileSelect(null as any);
+  };
+
+  const handleButtonClick = () => {
+    console.log("Botão clicado - tentando abrir seletor de arquivo");
+    const fileInput = document.getElementById('file-upload') as HTMLInputElement;
+    if (fileInput) {
+      fileInput.click();
+    }
   };
 
   return (
@@ -96,11 +110,14 @@ const FileUpload = ({ onFileSelect, selectedFile }: FileUploadProps) => {
             className="hidden"
             id="file-upload"
           />
-          <label htmlFor="file-upload">
-            <Button variant="outline" className="cursor-pointer">
-              Selecionar Arquivo
-            </Button>
-          </label>
+          
+          <Button 
+            variant="outline" 
+            onClick={handleButtonClick}
+            type="button"
+          >
+            Selecionar Arquivo
+          </Button>
         </div>
       ) : (
         <div className="border-2 border-green-200 bg-green-50 rounded-lg p-4">
