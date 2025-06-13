@@ -5,8 +5,10 @@ import HeroSection from "@/components/HeroSection";
 import FileUpload from "@/components/FileUpload";
 import AnonymizationConfig from "@/components/AnonymizationConfig";
 import ProcessingSection from "@/components/ProcessingSection";
+import ProcessingResults from "@/components/ProcessingResults";
 import Footer from "@/components/Footer";
 import { useToast } from "@/hooks/use-toast";
+import { DocumentProcessor, ProcessingResult } from "@/utils/documentProcessor";
 
 interface AnonymizationOptions {
   cpf: string;
@@ -21,6 +23,7 @@ const Index = () => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isProcessed, setIsProcessed] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [processingResult, setProcessingResult] = useState<ProcessingResult | null>(null);
   const [anonymizationOptions, setAnonymizationOptions] = useState<AnonymizationOptions>({
     cpf: "partial",
     names: "pseudonym",
@@ -35,6 +38,7 @@ const Index = () => {
   const handleFileSelect = (file: File) => {
     setSelectedFile(file);
     setIsProcessed(false);
+    setProcessingResult(null);
     console.log("Arquivo selecionado:", file.name, file.size, file.type);
   };
 
@@ -44,42 +48,57 @@ const Index = () => {
     setIsProcessing(true);
     console.log("Iniciando processamento com opções:", anonymizationOptions);
     
-    // Simulate processing time
-    setTimeout(() => {
+    try {
+      const result = await DocumentProcessor.processFile(selectedFile, anonymizationOptions);
+      
+      setProcessingResult(result);
       setIsProcessed(true);
-      setIsProcessing(false);
       
       toast({
         title: "Processamento concluído!",
-        description: "Seu documento foi anonimizado com sucesso.",
+        description: `Documento anonimizado com sucesso. ${result.summary.totalPatterns} padrões detectados.`,
       });
       
-      console.log("Processamento concluído para:", selectedFile.name);
-    }, 2000);
+      console.log("Processamento concluído:", result.summary);
+    } catch (error) {
+      console.error("Erro no processamento:", error);
+      toast({
+        title: "Erro no processamento",
+        description: error instanceof Error ? error.message : "Erro desconhecido",
+        variant: "destructive",
+      });
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const handlePreview = () => {
-    console.log("Visualizando preview do documento anonimizado");
-    toast({
-      title: "Preview",
-      description: "Funcionalidade de preview será implementada em breve.",
-    });
+    if (processingResult) {
+      console.log("Mostrando preview do documento anonimizado");
+    }
   };
 
   const handleDownload = () => {
-    console.log("Fazendo download do documento anonimizado");
-    toast({
-      title: "Download iniciado",
-      description: "O download do documento anonimizado começou.",
-    });
+    if (!processingResult || !selectedFile) return;
     
-    // Simulate download
+    console.log("Fazendo download do documento anonimizado");
+    
+    // Criar arquivo para download
+    const blob = new Blob([processingResult.anonymizedText], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    
     const link = document.createElement('a');
-    link.href = '#';
-    link.download = `anonimizado_${selectedFile?.name || 'documento.pdf'}`;
+    link.href = url;
+    link.download = `anonimizado_${selectedFile.name.replace(/\.[^/.]+$/, "")}.txt`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    
+    toast({
+      title: "Download concluído",
+      description: "O documento anonimizado foi baixado com sucesso.",
+    });
   };
 
   return (
@@ -108,6 +127,10 @@ const Index = () => {
             onDownload={handleDownload}
             isProcessing={isProcessing}
           />
+          
+          {processingResult && (
+            <ProcessingResults result={processingResult} />
+          )}
         </div>
       </main>
       
