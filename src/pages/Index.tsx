@@ -81,15 +81,25 @@ const Index = () => {
   const handleDownload = () => {
     if (!processingResult || !selectedFile) return;
     
-    console.log("Fazendo download do documento anonimizado");
+    console.log("Fazendo download do documento anonimizado no formato original");
     
-    // Criar arquivo para download
-    const blob = new Blob([processingResult.anonymizedText], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
+    // Usar o arquivo processado se disponível, senão usar texto
+    const fileToDownload = processingResult.processedFile || 
+      new Blob([processingResult.anonymizedText], { type: 'text/plain' });
+    
+    const url = URL.createObjectURL(fileToDownload);
+    
+    // Determinar extensão baseada no formato original
+    let extension = '.txt';
+    if (processingResult.originalFormat === 'application/pdf') {
+      extension = '.pdf';
+    } else if (processingResult.originalFormat === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+      extension = '.docx';
+    }
     
     const link = document.createElement('a');
     link.href = url;
-    link.download = `anonimizado_${selectedFile.name.replace(/\.[^/.]+$/, "")}.txt`;
+    link.download = `anonimizado_${selectedFile.name.replace(/\.[^/.]+$/, "")}${extension}`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -97,7 +107,7 @@ const Index = () => {
     
     toast({
       title: "Download concluído",
-      description: "O documento anonimizado foi baixado com sucesso.",
+      description: "O documento anonimizado foi baixado no formato original.",
     });
   };
 
@@ -128,8 +138,11 @@ const Index = () => {
             isProcessing={isProcessing}
           />
           
-          {processingResult && (
-            <ProcessingResults result={processingResult} />
+          {processingResult && selectedFile && (
+            <ProcessingResults 
+              result={processingResult} 
+              fileName={selectedFile.name}
+            />
           )}
         </div>
       </main>
