@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import Header from "@/components/Header";
 import HeroSection from "@/components/HeroSection";
@@ -6,9 +5,10 @@ import FileUpload from "@/components/FileUpload";
 import AnonymizationConfig from "@/components/AnonymizationConfig";
 import ProcessingSection from "@/components/ProcessingSection";
 import ProcessingResults from "@/components/ProcessingResults";
+import ProcessingHistory from "@/components/ProcessingHistory";
 import Footer from "@/components/Footer";
 import { useToast } from "@/hooks/use-toast";
-import { DocumentProcessor, ProcessingResult } from "@/utils/documentProcessor";
+import { SupabaseDocumentService, ProcessingResult } from "@/services/supabaseDocumentService";
 
 interface AnonymizationOptions {
   cpf: string;
@@ -46,10 +46,10 @@ const Index = () => {
     if (!selectedFile) return;
     
     setIsProcessing(true);
-    console.log("Iniciando processamento com opções:", anonymizationOptions);
+    console.log("🚀 Iniciando processamento com Supabase...");
     
     try {
-      const result = await DocumentProcessor.processFile(selectedFile, anonymizationOptions);
+      const result = await SupabaseDocumentService.processDocument(selectedFile, anonymizationOptions);
       
       setProcessingResult(result);
       setIsProcessed(true);
@@ -59,9 +59,9 @@ const Index = () => {
         description: `Documento anonimizado com sucesso. ${result.summary.totalPatterns} padrões detectados.`,
       });
       
-      console.log("Processamento concluído:", result.summary);
+      console.log("✅ Processamento concluído:", result.summary);
     } catch (error) {
-      console.error("Erro no processamento:", error);
+      console.error("❌ Erro no processamento:", error);
       toast({
         title: "Erro no processamento",
         description: error instanceof Error ? error.message : "Erro desconhecido",
@@ -74,42 +74,43 @@ const Index = () => {
 
   const handlePreview = () => {
     if (processingResult) {
-      console.log("Mostrando preview do documento anonimizado");
+      console.log("👁️ Mostrando preview do documento anonimizado");
+      // Preview já é mostrado no ProcessingResults
     }
   };
 
-  const handleDownload = () => {
+  const handleDownload = async () => {
     if (!processingResult || !selectedFile) return;
     
-    console.log("Fazendo download do documento anonimizado no formato original");
-    
-    // Usar o arquivo processado se disponível, senão usar texto
-    const fileToDownload = processingResult.processedFile || 
-      new Blob([processingResult.anonymizedText], { type: 'text/plain' });
-    
-    const url = URL.createObjectURL(fileToDownload);
-    
-    // Determinar extensão baseada no formato original
-    let extension = '.txt';
-    if (processingResult.originalFormat === 'application/pdf') {
-      extension = '.pdf';
-    } else if (processingResult.originalFormat === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
-      extension = '.docx';
+    try {
+      await SupabaseDocumentService.downloadProcessedFile(
+        processingResult.downloadPath,
+        selectedFile.name
+      );
+      
+      toast({
+        title: "Download concluído",
+        description: "O documento anonimizado foi baixado com sucesso.",
+      });
+    } catch (error) {
+      console.error("❌ Erro no download:", error);
+      toast({
+        title: "Erro no download",
+        description: error instanceof Error ? error.message : "Erro desconhecido",
+        variant: "destructive",
+      });
     }
-    
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `anonimizado_${selectedFile.name.replace(/\.[^/.]+$/, "")}${extension}`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    
-    toast({
-      title: "Download concluído",
-      description: "O documento anonimizado foi baixado no formato original.",
-    });
   };
+
+  // Converter ProcessingResult para o formato esperado pelo ProcessingResults
+  const processingResultForDisplay = processingResult ? {
+    originalText: processingResult.originalText,
+    anonymizedText: processingResult.anonymizedText,
+    detectedPatterns: processingResult.detectedPatterns,
+    anonymizationResults: [], // Não usado no componente atual
+    originalFormat: selectedFile?.type || 'text/plain',
+    summary: processingResult.summary
+  } : null;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -138,12 +139,14 @@ const Index = () => {
             isProcessing={isProcessing}
           />
           
-          {processingResult && selectedFile && (
+          {processingResultForDisplay && selectedFile && (
             <ProcessingResults 
-              result={processingResult} 
+              result={processingResultForDisplay} 
               fileName={selectedFile.name}
             />
           )}
+
+          <ProcessingHistory />
         </div>
       </main>
       

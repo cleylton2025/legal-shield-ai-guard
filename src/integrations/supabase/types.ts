@@ -9,7 +9,92 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
-      [_ in never]: never
+      processing_history: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          detected_patterns: Json | null
+          error_message: string | null
+          file_size: number
+          file_type: string
+          id: string
+          original_filename: string
+          processed_storage_path: string | null
+          processing_options: Json
+          processing_summary: Json | null
+          status: string
+          storage_path: string | null
+          user_id: string | null
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          detected_patterns?: Json | null
+          error_message?: string | null
+          file_size: number
+          file_type: string
+          id?: string
+          original_filename: string
+          processed_storage_path?: string | null
+          processing_options: Json
+          processing_summary?: Json | null
+          status?: string
+          storage_path?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          detected_patterns?: Json | null
+          error_message?: string | null
+          file_size?: number
+          file_type?: string
+          id?: string
+          original_filename?: string
+          processed_storage_path?: string | null
+          processing_options?: Json
+          processing_summary?: Json | null
+          status?: string
+          storage_path?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      processing_logs: {
+        Row: {
+          created_at: string
+          details: Json | null
+          id: string
+          log_level: string
+          message: string
+          processing_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          details?: Json | null
+          id?: string
+          log_level: string
+          message: string
+          processing_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          details?: Json | null
+          id?: string
+          log_level?: string
+          message?: string
+          processing_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "processing_logs_processing_id_fkey"
+            columns: ["processing_id"]
+            isOneToOne: false
+            referencedRelation: "processing_history"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
