@@ -130,7 +130,7 @@ serve(async (req) => {
       message: 'Padrões detectados com precisão melhorada',
       details: { 
         totalPatterns: detectedPatterns.length,
-        patterns: detectedPatterns.map(p => ({ type: p.type, confidence: p.confidence }))
+        patterns: detectedPatterns.map(p => ({ type: p.type, confidence: p.confidence, value: p.value.substring(0, 20) + '...' }))
       }
     })
 
@@ -271,9 +271,11 @@ async function extractTextFromDOCXReal(file: File): Promise<string> {
   }
 }
 
-// Função melhorada para detectar padrões brasileiros
+// Função melhorada para detectar padrões brasileiros com foco em nomes
 function detectPatternsImproved(text: string): DetectedPattern[] {
   const patterns: DetectedPattern[] = []
+  
+  console.log('🔍 Iniciando detecção avançada de padrões...')
   
   // Reset regex lastIndex
   const resetRegex = (regex: RegExp) => { regex.lastIndex = 0 }
@@ -290,6 +292,7 @@ function detectPatternsImproved(text: string): DetectedPattern[] {
         endIndex: match.index + match[0].length,
         confidence: 0.98
       })
+      console.log(`✅ CPF detectado: ${match[0]}`)
     }
   }
   resetRegex(cpfRegex)
@@ -305,6 +308,7 @@ function detectPatternsImproved(text: string): DetectedPattern[] {
         endIndex: match.index + match[0].length,
         confidence: 0.95
       })
+      console.log(`✅ CNPJ detectado: ${match[0]}`)
     }
   }
   resetRegex(cnpjRegex)
@@ -321,6 +325,7 @@ function detectPatternsImproved(text: string): DetectedPattern[] {
         endIndex: match.index + match[0].length,
         confidence: 0.90
       })
+      console.log(`✅ Telefone detectado: ${match[0]}`)
     }
   }
   resetRegex(phoneRegex)
@@ -335,34 +340,165 @@ function detectPatternsImproved(text: string): DetectedPattern[] {
       endIndex: match.index + match[0].length,
       confidence: 0.95
     })
+    console.log(`✅ Email detectado: ${match[0]}`)
   }
   resetRegex(emailRegex)
   
-  // 5. Detectar nomes brasileiros melhorados
-  const nameRegex = /\b[A-ZÁÉÍÓÚÂÊÎÔÛÀÈÌÒÙÃÕÇ][a-záéíóúâêîôûàèìòùãõç]+(?:\s+(?:da|de|do|dos|das)?\s*[A-ZÁÉÍÓÚÂÊÎÔÛÀÈÌÒÙÃÕÇ][a-záéíóúâêîôûàèìòùãõç]+)+\b/g
-  const commonWords = ['Brasil', 'Estado', 'Governo', 'Ministério', 'Tribunal', 'Superior', 'Federal']
+  // 5. DETECÇÃO MELHORADA DE NOMES - Múltiplas estratégias
+  console.log('🔍 Iniciando detecção avançada de nomes...')
   
-  while ((match = nameRegex.exec(text)) !== null) {
-    const nameValue = match[0]
-    const words = nameValue.split(/\s+/)
+  // Estratégia 1: Nomes com 2+ palavras em maiúsculo (mais permissiva)
+  const nameRegexStrict = /\b[A-ZÁÉÍÓÚÂÊÎÔÛÀÈÌÒÙÃÕÇ][A-ZÁÉÍÓÚÂÊÎÔÛÀÈÌÒÙÃÕÇ\s]+(?:\s+[A-ZÁÉÍÓÚÂÊÎÔÛÀÈÌÒÙÃÕÇ][A-ZÁÉÍÓÚÂÊÎÔÛÀÈÌÒÙÃÕÇ]+)+\b/g
+  while ((match = nameRegexStrict.exec(text)) !== null) {
+    const nameValue = match[0].trim()
+    const isValidName = validateNameCandidate(nameValue, 'strict')
     
-    // Filtrar palavras comuns e validar estrutura de nome
-    const isCommonWord = commonWords.some(word => nameValue.includes(word))
-    const hasValidStructure = words.length >= 2 && words.every(word => word.length > 1)
-    
-    if (!isCommonWord && hasValidStructure) {
+    if (isValidName.isValid) {
       patterns.push({
         type: 'name',
         value: nameValue,
         startIndex: match.index,
-        endIndex: match.index + match[0].length,
-        confidence: 0.85
+        endIndex: match.index + nameValue.length,
+        confidence: isValidName.confidence
       })
+      console.log(`✅ Nome detectado (maiúsculo): ${nameValue} (confiança: ${isValidName.confidence})`)
+    } else {
+      console.log(`❌ Nome rejeitado (maiúsculo): ${nameValue} - Motivo: ${isValidName.reason}`)
     }
   }
-  resetRegex(nameRegex)
+  resetRegex(nameRegexStrict)
+  
+  // Estratégia 2: Nomes mistos (primeira letra maiúscula)
+  const nameRegexMixed = /\b[A-ZÁÉÍÓÚÂÊÎÔÛÀÈÌÒÙÃÕÇ][a-záéíóúâêîôûàèìòùãõç]+(?:\s+(?:da|de|do|dos|das|e)?\s*[A-ZÁÉÍÓÚÂÊÎÔÛÀÈÌÒÙÃÕÇ][a-záéíóúâêîôûàèìòùãõç]+)+\b/g
+  while ((match = nameRegexMixed.exec(text)) !== null) {
+    const nameValue = match[0].trim()
+    const isValidName = validateNameCandidate(nameValue, 'mixed')
+    
+    if (isValidName.isValid) {
+      patterns.push({
+        type: 'name',
+        value: nameValue,
+        startIndex: match.index,
+        endIndex: match.index + nameValue.length,
+        confidence: isValidName.confidence
+      })
+      console.log(`✅ Nome detectado (misto): ${nameValue} (confiança: ${isValidName.confidence})`)
+    } else {
+      console.log(`❌ Nome rejeitado (misto): ${nameValue} - Motivo: ${isValidName.reason}`)
+    }
+  }
+  resetRegex(nameRegexMixed)
+  
+  // Estratégia 3: Detecção por contexto
+  const contextualNames = detectNamesByContext(text)
+  contextualNames.forEach(name => {
+    patterns.push(name)
+    console.log(`✅ Nome detectado (contexto): ${name.value} (confiança: ${name.confidence})`)
+  })
   
   return patterns.sort((a, b) => a.startIndex - b.startIndex)
+}
+
+// Função para validar candidatos a nome
+function validateNameCandidate(nameValue: string, strategy: 'strict' | 'mixed'): { isValid: boolean; confidence: number; reason?: string } {
+  const words = nameValue.trim().split(/\s+/)
+  
+  // Filtrar palavras muito curtas
+  if (words.some(word => word.length < 2)) {
+    return { isValid: false, confidence: 0, reason: 'Palavras muito curtas' }
+  }
+  
+  // Deve ter pelo menos 2 palavras
+  if (words.length < 2) {
+    return { isValid: false, confidence: 0, reason: 'Menos de 2 palavras' }
+  }
+  
+  // Lista reduzida de palavras comuns para filtrar (mais permissiva)
+  const commonWords = [
+    'BRASIL', 'GOVERNO', 'ESTADO', 'FEDERAL', 'NACIONAL', 'PÚBLICO', 'MUNICIPAL',
+    'TRIBUNAL', 'SUPERIOR', 'JUSTIÇA', 'MINISTÉRIO', 'SECRETARIA',
+    'PROCESSO', 'RECURSO', 'APELAÇÃO', 'MANDADO', 'SEGURANÇA',
+    'CÓDIGO', 'CIVIL', 'PENAL', 'TRABALHISTA', 'COMERCIAL', 'CONSTITUCIONAL',
+    'ARTIGO', 'LEI', 'DECRETO', 'PORTARIA', 'RESOLUÇÃO',
+    'COMPRA', 'VENDA', 'CONTRATO', 'ACORDO', 'FINANCIAMENTO'
+  ]
+  
+  // Verificar se contém palavras comuns
+  const hasCommonWord = words.some(word => 
+    commonWords.includes(word.toUpperCase())
+  )
+  
+  if (hasCommonWord) {
+    return { isValid: false, confidence: 0, reason: 'Contém palavra comum' }
+  }
+  
+  // Verificar padrões que não são nomes
+  const fullName = nameValue.toUpperCase()
+  
+  // Rejeitar se parece com título de documento ou seção
+  if (fullName.includes('CONTRATO') || fullName.includes('DOCUMENTO') || 
+      fullName.includes('ANEXO') || fullName.includes('CLÁUSULA')) {
+    return { isValid: false, confidence: 0, reason: 'Parece título de documento' }
+  }
+  
+  // Aceitar nomes que passaram nos filtros
+  let confidence = 0.85 // Base para nomes válidos
+  
+  // Aumentar confiança para nomes típicos brasileiros
+  if (strategy === 'strict' && words.length >= 3) {
+    confidence = 0.90 // Nomes completos em maiúsculo
+  }
+  
+  // Aumentar confiança se tem padrão típico de nome brasileiro
+  const hasTypicalPattern = words.some(word => 
+    ['SILVA', 'SANTOS', 'OLIVEIRA', 'SOUZA', 'RODRIGUES', 'FERREIRA', 
+     'ALVES', 'PEREIRA', 'LIMA', 'GOMES', 'COSTA', 'RIBEIRO', 'MARTINS',
+     'CARVALHO', 'ALMEIDA', 'LOPES', 'SOARES', 'FERNANDES', 'VIEIRA',
+     'BARBOSA', 'ROCHA', 'DIAS', 'MONTEIRO', 'CARDOSO', 'REIS', 'ARAÚJO'].includes(word.toUpperCase())
+  )
+  
+  if (hasTypicalPattern) {
+    confidence = Math.min(0.95, confidence + 0.1)
+  }
+  
+  return { isValid: true, confidence }
+}
+
+// Função para detectar nomes por contexto
+function detectNamesByContext(text: string): DetectedPattern[] {
+  const contextualPatterns: DetectedPattern[] = []
+  
+  // Padrões contextuais que indicam nomes
+  const contextPatterns = [
+    /(?:nome[:\s]+|sr\.?\s+|sra\.?\s+|senhor\s+|senhora\s+)([A-ZÁÉÍÓÚÂÊÎÔÛÀÈÌÒÙÃÕÇ][A-ZÁÉÍÓÚÂÊÎÔÛÀÈÌÒÙÃÕÇa-záéíóúâêîôûàèìòùãõç\s]+)/gi,
+    /(?:contratante[:\s]+|contratado[:\s]+|cliente[:\s]+|parte[:\s]+)([A-ZÁÉÍÓÚÂÊÎÔÛÀÈÌÒÙÃÕÇ][A-ZÁÉÍÓÚÂÊÎÔÛÀÈÌÒÙÃÕÇa-záéíóúâêîôûàèìòùãõç\s]+)/gi,
+    /(?:requerente[:\s]+|requerido[:\s]+|autor[:\s]+|réu[:\s]+)([A-ZÁÉÍÓÚÂÊÎÔÛÀÈÌÒÙÃÕÇ][A-ZÁÉÍÓÚÂÊÎÔÛÀÈÌÒÙÃÕÇa-záéíóúâêîôûàèìòùãõç\s]+)/gi
+  ]
+  
+  contextPatterns.forEach(regex => {
+    let match
+    while ((match = regex.exec(text)) !== null) {
+      const nameValue = match[1].trim()
+      const words = nameValue.split(/\s+/)
+      
+      // Validar se parece um nome válido
+      if (words.length >= 2 && words.length <= 6) {
+        const endIndex = match.index + match[0].length
+        const startIndex = endIndex - nameValue.length
+        
+        contextualPatterns.push({
+          type: 'name',
+          value: nameValue,
+          startIndex,
+          endIndex,
+          confidence: 0.92 // Alta confiança para nomes encontrados por contexto
+        })
+      }
+    }
+    regex.lastIndex = 0
+  })
+  
+  return contextualPatterns
 }
 
 // Função para gerar PDF real usando jsPDF
