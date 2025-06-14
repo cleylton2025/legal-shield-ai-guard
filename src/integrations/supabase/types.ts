@@ -24,7 +24,7 @@ export type Database = {
           processing_summary: Json | null
           status: string
           storage_path: string | null
-          user_id: string | null
+          user_id: string
         }
         Insert: {
           completed_at?: string | null
@@ -40,7 +40,7 @@ export type Database = {
           processing_summary?: Json | null
           status?: string
           storage_path?: string | null
-          user_id?: string | null
+          user_id: string
         }
         Update: {
           completed_at?: string | null
@@ -56,7 +56,7 @@ export type Database = {
           processing_summary?: Json | null
           status?: string
           storage_path?: string | null
-          user_id?: string | null
+          user_id?: string
         }
         Relationships: []
       }
