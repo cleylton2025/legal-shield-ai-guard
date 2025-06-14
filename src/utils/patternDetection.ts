@@ -1,3 +1,4 @@
+import { NameDetector } from './nameDetector';
 
 export interface DetectedPattern {
   type: 'cpf' | 'cnpj' | 'phone' | 'email' | 'name';
@@ -7,7 +8,7 @@ export interface DetectedPattern {
   confidence: number;
 }
 
-// Função principal para detectar padrões - melhorada para nomes
+// Função principal para detectar padrões - TOTALMENTE REFORMULADA
 export function detectPatterns(text: string): DetectedPattern[] {
   const patterns: DetectedPattern[] = [];
   
@@ -89,64 +90,22 @@ export function detectPatterns(text: string): DetectedPattern[] {
   }
   resetRegex(emailRegex);
   
-  // 5. DETECÇÃO MELHORADA DE NOMES - Múltiplas estratégias
-  console.log('🔍 Iniciando detecção avançada de nomes...');
-  
-  // Estratégia 1: Nomes com 2+ palavras em maiúsculo (mais permissiva)
-  const nameRegexStrict = /\b[A-ZÁÉÍÓÚÂÊÎÔÛÀÈÌÒÙÃÕÇ][A-ZÁÉÍÓÚÂÊÎÔÛÀÈÌÒÙÃÕÇ\s]+(?:\s+[A-ZÁÉÍÓÚÂÊÎÔÛÀÈÌÒÙÃÕÇ][A-ZÁÉÍÓÚÂÊÎÔÛÀÈÌÒÙÃÕÇ]+)+\b/g;
-  while ((match = nameRegexStrict.exec(text)) !== null) {
-    const nameValue = match[0].trim();
-    const isValidName = validateNameCandidate(nameValue, 'strict');
-    
-    if (isValidName.isValid) {
-      patterns.push({
-        type: 'name',
-        value: nameValue,
-        startIndex: match.index,
-        endIndex: match.index + nameValue.length,
-        confidence: isValidName.confidence
-      });
-      console.log(`✅ Nome detectado (maiúsculo): ${nameValue} (confiança: ${isValidName.confidence})`);
-    } else {
-      console.log(`❌ Nome rejeitado (maiúsculo): ${nameValue} - Motivo: ${isValidName.reason}`);
-    }
-  }
-  resetRegex(nameRegexStrict);
-  
-  // Estratégia 2: Nomes mistos (primeira letra maiúscula)
-  const nameRegexMixed = /\b[A-ZÁÉÍÓÚÂÊÎÔÛÀÈÌÒÙÃÕÇ][a-záéíóúâêîôûàèìòùãõç]+(?:\s+(?:da|de|do|dos|das|e)?\s*[A-ZÁÉÍÓÚÂÊÎÔÛÀÈÌÒÙÃÕÇ][a-záéíóúâêîôûàèìòùãõç]+)+\b/g;
-  while ((match = nameRegexMixed.exec(text)) !== null) {
-    const nameValue = match[0].trim();
-    const isValidName = validateNameCandidate(nameValue, 'mixed');
-    
-    if (isValidName.isValid) {
-      patterns.push({
-        type: 'name',
-        value: nameValue,
-        startIndex: match.index,
-        endIndex: match.index + nameValue.length,
-        confidence: isValidName.confidence
-      });
-      console.log(`✅ Nome detectado (misto): ${nameValue} (confiança: ${isValidName.confidence})`);
-    } else {
-      console.log(`❌ Nome rejeitado (misto): ${nameValue} - Motivo: ${isValidName.reason}`);
-    }
-  }
-  resetRegex(nameRegexMixed);
-  
-  // Estratégia 3: Detecção por contexto
-  const contextualNames = detectNamesByContext(text);
-  contextualNames.forEach(name => {
-    patterns.push(name);
-    console.log(`✅ Nome detectado (contexto): ${name.value} (confiança: ${name.confidence})`);
-  });
+  // 5. NOVA DETECÇÃO DE NOMES - Usando NameDetector
+  console.log('🔍 Iniciando detecção especializada de nomes...');
+  const namePatterns = NameDetector.detectNames(text);
+  patterns.push(...namePatterns);
   
   // Ordenar por posição no texto
   patterns.sort((a, b) => a.startIndex - b.startIndex);
   
-  console.log(`🔍 Padrões detectados: ${patterns.length}`);
-  patterns.forEach(pattern => {
-    console.log(`- ${pattern.type.toUpperCase()}: "${pattern.value}" (confiança: ${pattern.confidence})`);
+  console.log(`🎯 RESUMO: ${patterns.length} padrões detectados no total`);
+  const summary = patterns.reduce((acc, pattern) => {
+    acc[pattern.type] = (acc[pattern.type] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+  
+  Object.entries(summary).forEach(([type, count]) => {
+    console.log(`- ${type.toUpperCase()}: ${count} ocorrências`);
   });
   
   return patterns;

@@ -121,21 +121,25 @@ serve(async (req) => {
       details: { textLength: extractedText.length, extractionMethod: 'real' }
     })
 
-    // Detectar padrões no texto real com melhor precisão
-    const detectedPatterns = detectPatternsImproved(extractedText)
+    // Detectar padrões no texto real com melhor precisão - NOVO SISTEMA
+    const detectedPatterns = detectPatternsAdvanced(extractedText)
     
     await supabase.from('processing_logs').insert({
       processing_id: processingId,
       log_level: 'info',
-      message: 'Padrões detectados com precisão melhorada',
+      message: 'Padrões detectados com sistema avançado',
       details: { 
         totalPatterns: detectedPatterns.length,
-        patterns: detectedPatterns.map(p => ({ type: p.type, confidence: p.confidence, value: p.value.substring(0, 20) + '...' }))
+        patterns: detectedPatterns.map(p => ({ 
+          type: p.type, 
+          confidence: p.confidence, 
+          preview: p.value.substring(0, 20) + (p.value.length > 20 ? '...' : '') 
+        }))
       }
     })
 
     // Processar anonimização
-    const anonymizedText = processAnonymization(extractedText, detectedPatterns, options)
+    const anonymizedText = processAnonymizationAdvanced(extractedText, detectedPatterns, options)
 
     // Gerar arquivo anonimizado REAL
     let processedFileBlob: Blob
@@ -173,6 +177,7 @@ serve(async (req) => {
     const summary = {
       totalPatterns: detectedPatterns.length,
       cpfCount: detectedPatterns.filter(p => p.type === 'cpf').length,
+      cnpjCount: detectedPatterns.filter(p => p.type === 'cnpj').length,
       nameCount: detectedPatterns.filter(p => p.type === 'name').length,
       phoneCount: detectedPatterns.filter(p => p.type === 'phone').length,
       emailCount: detectedPatterns.filter(p => p.type === 'email').length
@@ -193,7 +198,7 @@ serve(async (req) => {
     await supabase.from('processing_logs').insert({
       processing_id: processingId,
       log_level: 'info',
-      message: 'Processamento concluído com sucesso usando métodos reais',
+      message: 'Processamento concluído com sistema avançado de detecção',
       details: summary
     })
 
@@ -227,6 +232,366 @@ serve(async (req) => {
     )
   }
 })
+
+// NOVA FUNÇÃO DE DETECÇÃO AVANÇADA
+function detectPatternsAdvanced(text: string): DetectedPattern[] {
+  const patterns: DetectedPattern[] = []
+  
+  console.log('🔍 Iniciando detecção avançada de padrões...')
+  
+  // Reset regex lastIndex
+  const resetRegex = (regex: RegExp) => { regex.lastIndex = 0 }
+  
+  // 1. Detectar CPFs com validação melhorada
+  const cpfRegex = /\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b/g
+  let match
+  while ((match = cpfRegex.exec(text)) !== null) {
+    if (isValidCPF(match[0])) {
+      patterns.push({
+        type: 'cpf',
+        value: match[0],
+        startIndex: match.index,
+        endIndex: match.index + match[0].length,
+        confidence: 0.98
+      })
+      console.log(`✅ CPF detectado: ${match[0]}`)
+    }
+  }
+  resetRegex(cpfRegex)
+  
+  // 2. Detectar CNPJs
+  const cnpjRegex = /\b\d{2}\.?\d{3}\.?\d{3}\/?0001-?\d{2}\b/g
+  while ((match = cnpjRegex.exec(text)) !== null) {
+    if (isValidCNPJ(match[0])) {
+      patterns.push({
+        type: 'cnpj',
+        value: match[0],
+        startIndex: match.index,
+        endIndex: match.index + match[0].length,
+        confidence: 0.95
+      })
+      console.log(`✅ CNPJ detectado: ${match[0]}`)
+    }
+  }
+  resetRegex(cnpjRegex)
+  
+  // 3. Detectar telefones brasileiros
+  const phoneRegex = /\b(?:\+55\s?)?(?:\(\d{2}\)\s?)?(?:9\s?)?\d{4,5}-?\d{4}\b/g
+  while ((match = phoneRegex.exec(text)) !== null) {
+    const numbers = match[0].replace(/\D/g, '')
+    if (numbers.length >= 10 && numbers.length <= 13) {
+      patterns.push({
+        type: 'phone',
+        value: match[0],
+        startIndex: match.index,
+        endIndex: match.index + match[0].length,
+        confidence: 0.90
+      })
+      console.log(`✅ Telefone detectado: ${match[0]}`)
+    }
+  }
+  resetRegex(phoneRegex)
+  
+  // 4. Detectar emails
+  const emailRegex = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g
+  while ((match = emailRegex.exec(text)) !== null) {
+    patterns.push({
+      type: 'email',
+      value: match[0],
+      startIndex: match.index,
+      endIndex: match.index + match[0].length,
+      confidence: 0.95
+    })
+    console.log(`✅ Email detectado: ${match[0]}`)
+  }
+  resetRegex(emailRegex)
+  
+  // 5. DETECÇÃO AVANÇADA DE NOMES - Sistema totalmente reformulado
+  console.log('🔍 Iniciando detecção especializada de nomes brasileiros...')
+  const namePatterns = detectNamesProfessional(text)
+  patterns.push(...namePatterns)
+  
+  return patterns.sort((a, b) => a.startIndex - b.startIndex)
+}
+
+// NOVA FUNÇÃO ESPECIALIZADA PARA NOMES
+function detectNamesProfessional(text: string): DetectedPattern[] {
+  const patterns: DetectedPattern[] = []
+  const detectedNames = new Set<string>()
+  
+  // Lista de prenomes brasileiros comuns (amostra essencial)
+  const commonFirstNames = [
+    'JOÃO', 'JOSÉ', 'ANTÔNIO', 'FRANCISCO', 'CARLOS', 'PAULO', 'PEDRO', 'LUCAS', 'LUIZ', 'MARCOS',
+    'MARIA', 'ANA', 'FRANCISCA', 'ANTÔNIA', 'ADRIANA', 'JULIANA', 'MÁRCIA', 'FERNANDA', 'PATRICIA',
+    'DANILO', 'SUELEN', 'DERLAN', 'RICHELMY', 'PIOL', 'CARMINATI', 'PAYER', 'NATO', 'GRONCHI',
+    'GABRIEL', 'RAFAEL', 'DANIEL', 'MARCELO', 'BRUNO', 'EDUARDO', 'FELIPE', 'RODRIGO', 'LEONARDO'
+  ]
+  
+  // Lista de sobrenomes brasileiros comuns
+  const commonLastNames = [
+    'SILVA', 'SANTOS', 'OLIVEIRA', 'SOUZA', 'RODRIGUES', 'FERREIRA', 'ALVES', 'PEREIRA', 'LIMA',
+    'GOMES', 'COSTA', 'RIBEIRO', 'MARTINS', 'CARVALHO', 'ALMEIDA', 'LOPES', 'SOARES', 'FERNANDES',
+    'GONÇALVES', 'CHIARELI', 'LENGRUBER', 'ZANATTA', 'BONDING', 'ARTIFICIAL', 'INTELLIGENCE'
+  ]
+  
+  // Palavras que definitivamente NÃO são nomes
+  const nonNameWords = [
+    'BRASIL', 'GOVERNO', 'ESTADO', 'FEDERAL', 'NACIONAL', 'PÚBLICO', 'MUNICIPAL',
+    'TRIBUNAL', 'SUPERIOR', 'JUSTIÇA', 'MINISTÉRIO', 'SECRETARIA', 'CARTÓRIO',
+    'PROCESSO', 'RECURSO', 'APELAÇÃO', 'MANDADO', 'SEGURANÇA', 'CÓDIGO', 'CIVIL',
+    'CONTRATO', 'ACORDO', 'FINANCIAMENTO', 'CLÁUSULA', 'DOCUMENTO', 'ANEXO',
+    'PREÂMBULO', 'QUALIFICAÇÃO', 'NUBENTES', 'SUCESSÃO', 'DISPOSIÇÕES', 'PROTEÇÃO'
+  ]
+  
+  // Estratégia 1: Nomes completos em maiúsculo (rigoroso)
+  const nameRegexStrict = /\b[A-ZÁÉÍÓÚÂÊÎÔÛÀÈÌÒÙÃÕÇ]{2,}(?:\s+[A-ZÁÉÍÓÚÂÊÎÔÛÀÈÌÒÙÃÕÇ]{2,}){1,5}\b/g
+  let match
+  
+  while ((match = nameRegexStrict.exec(text)) !== null) {
+    const nameValue = match[0].trim()
+    const words = nameValue.split(/\s+/)
+    
+    if (detectedNames.has(nameValue)) continue
+    
+    // Validação rigorosa
+    if (validateNameAdvanced(words, commonFirstNames, commonLastNames, nonNameWords)) {
+      patterns.push({
+        type: 'name',
+        value: nameValue,
+        startIndex: match.index,
+        endIndex: match.index + nameValue.length,
+        confidence: 0.92
+      })
+      
+      detectedNames.add(nameValue)
+      console.log(`✅ Nome detectado (maiúsculo): "${nameValue}" (confiança: 0.92)`)
+    } else {
+      console.log(`❌ Nome rejeitado (maiúsculo): "${nameValue}"`)
+    }
+  }
+  
+  // Estratégia 2: Nomes mistos (primeira letra maiúscula)
+  const nameRegexMixed = /\b[A-ZÁÉÍÓÚÂÊÎÔÛÀÈÌÒÙÃÕÇ][a-záéíóúâêîôûàèìòùãõç]+(?:\s+(?:da|de|do|dos|das|e)\s*)?(?:\s+[A-ZÁÉÍÓÚÂÊÎÔÛÀÈÌÒÙÃÕÇ][a-záéíóúâêîôûàèìòùãõç]+)+\b/g
+  nameRegexMixed.lastIndex = 0
+  
+  while ((match = nameRegexMixed.exec(text)) !== null) {
+    const nameValue = match[0].trim()
+    const words = nameValue.split(/\s+/)
+    
+    if (detectedNames.has(nameValue)) continue
+    
+    // Converter para maiúsculo para validação
+    const upperWords = words.map(w => w.toUpperCase())
+    
+    if (validateNameAdvanced(upperWords, commonFirstNames, commonLastNames, nonNameWords)) {
+      patterns.push({
+        type: 'name',
+        value: nameValue,
+        startIndex: match.index,
+        endIndex: match.index + nameValue.length,
+        confidence: 0.88
+      })
+      
+      detectedNames.add(nameValue)
+      console.log(`✅ Nome detectado (misto): "${nameValue}" (confiança: 0.88)`)
+    } else {
+      console.log(`❌ Nome rejeitado (misto): "${nameValue}"`)
+    }
+  }
+  
+  // Estratégia 3: Nomes por contexto
+  const contextPatterns = [
+    /(?:nome[:\s]+|sr\.?\s+|sra\.?\s+|senhor\s+|senhora\s+)([A-ZÁÉÍÓÚÂÊÎÔÛÀÈÌÒÙÃÕÇ][A-ZÁÉÍÓÚÂÊÎÔÛÀÈÌÒÙÃÕÇa-záéíóúâêîôûàèìòùãõç\s]+)/gi,
+    /(?:contratante[:\s]+|contratado[:\s]+|cliente[:\s]+|parte[:\s]+)([A-ZÁÉÍÓÚÂÊÎÔÛÀÈÌÒÙÃÕÇ][A-ZÁÉÍÓÚÂÊÎÔÛÀÈÌÒÙÃÕÇa-záéíóúâêîôûàèìòùãõç\s]+)/gi
+  ]
+  
+  contextPatterns.forEach(regex => {
+    regex.lastIndex = 0
+    while ((match = regex.exec(text)) !== null) {
+      const nameValue = match[1].trim()
+      const words = nameValue.split(/\s+/)
+      
+      if (detectedNames.has(nameValue)) continue
+      
+      if (words.length >= 2 && words.length <= 6) {
+        const endIndex = match.index + match[0].length
+        const startIndex = endIndex - nameValue.length
+        
+        patterns.push({
+          type: 'name',
+          value: nameValue,
+          startIndex,
+          endIndex,
+          confidence: 0.96
+        })
+        
+        detectedNames.add(nameValue)
+        console.log(`✅ Nome detectado (contexto): "${nameValue}" (confiança: 0.96)`)
+      }
+    }
+  })
+  
+  console.log(`🎯 Total de nomes únicos detectados: ${patterns.length}`)
+  return patterns
+}
+
+// Função de validação avançada para nomes
+function validateNameAdvanced(
+  words: string[], 
+  commonFirstNames: string[], 
+  commonLastNames: string[], 
+  nonNameWords: string[]
+): boolean {
+  // Deve ter entre 2 e 6 palavras
+  if (words.length < 2 || words.length > 6) return false
+  
+  // Não deve conter palavras muito curtas
+  if (words.some(word => word.length < 2)) return false
+  
+  // Não deve conter números
+  if (words.some(word => /\d/.test(word))) return false
+  
+  // Não deve conter palavras que definitivamente não são nomes
+  if (words.some(word => nonNameWords.includes(word.toUpperCase()))) return false
+  
+  // Deve ter pelo menos um prenome ou sobrenome comum brasileiro
+  const hasCommonFirstName = words.some(word => commonFirstNames.includes(word.toUpperCase()))
+  const hasCommonLastName = words.some(word => commonLastNames.includes(word.toUpperCase()))
+  
+  return hasCommonFirstName || hasCommonLastName
+}
+
+// NOVA FUNÇÃO DE ANONIMIZAÇÃO AVANÇADA
+function processAnonymizationAdvanced(text: string, patterns: DetectedPattern[], options: ProcessingOptions): string {
+  let anonymizedText = text
+  const replacementMap = new Map<string, string>()
+  let pseudonymCounter = 0
+  
+  console.log('🔄 Iniciando anonimização avançada...')
+  
+  // Processar cada padrão detectado
+  patterns.forEach((pattern) => {
+    let replacement = ''
+    
+    // Verificar se já temos uma substituição consistente
+    if (options.keepConsistency && replacementMap.has(pattern.value)) {
+      replacement = replacementMap.get(pattern.value)!
+    } else {
+      // Gerar nova substituição baseada no tipo e opção escolhida
+      switch (pattern.type) {
+        case 'cpf':
+          replacement = generateCPFReplacement(pattern.value, options.cpf)
+          break
+        case 'cnpj':
+          replacement = generateCNPJReplacement(pattern.value, options.cpf) // Usar mesma opção do CPF
+          break
+        case 'name':
+          replacement = generateNameReplacement(pattern.value, options.names, ++pseudonymCounter)
+          break
+        case 'phone':
+          replacement = generatePhoneReplacement(pattern.value, options.phones)
+          break
+        case 'email':
+          replacement = generateEmailReplacement(pattern.value, options.emails)
+          break
+      }
+      
+      // Armazenar para consistência
+      if (options.keepConsistency) {
+        replacementMap.set(pattern.value, replacement)
+      }
+    }
+    
+    console.log(`🔄 Substituindo ${pattern.type}: "${pattern.value}" → "${replacement}"`)
+    
+    // Aplicar substituição no texto
+    const escapedOriginal = pattern.value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const regex = new RegExp(escapedOriginal, 'g')
+    anonymizedText = anonymizedText.replace(regex, replacement)
+  })
+  
+  console.log(`✅ Anonimização concluída: ${patterns.length} substituições realizadas`)
+  return anonymizedText
+}
+
+// Funções auxiliares para gerar substituições
+function generateNameReplacement(originalName: string, technique: string, counter: number): string {
+  switch (technique) {
+    case 'generic':
+      return 'Fulano de Tal'
+    case 'pseudonym':
+      return `PESSOA_${String(counter).padStart(3, '0')}`
+    case 'initials':
+      return originalName.split(' ')
+        .filter(word => !['DA', 'DE', 'DO', 'DOS', 'DAS', 'E'].includes(word.toUpperCase()))
+        .map(word => word.charAt(0).toUpperCase())
+        .join('.') + '.'
+    default:
+      return 'Fulano de Tal'
+  }
+}
+
+function generateCPFReplacement(originalCPF: string, technique: string): string {
+  switch (technique) {
+    case 'partial':
+      const numbers = originalCPF.replace(/\D/g, '')
+      return `***.${numbers.substring(3, 6)}.***-${numbers.substring(9)}`
+    case 'full':
+      return originalCPF.replace(/[0-9]/g, '*')
+    case 'pseudonym':
+      return 'CPF_ANONIMIZADO'
+    default:
+      return originalCPF.replace(/[0-9]/g, '*')
+  }
+}
+
+function generateCNPJReplacement(originalCNPJ: string, technique: string): string {
+  switch (technique) {
+    case 'partial':
+      const numbers = originalCNPJ.replace(/\D/g, '')
+      return `**.***.***/0001-**`
+    case 'full':
+      return originalCNPJ.replace(/[0-9]/g, '*')
+    case 'pseudonym':
+      return 'CNPJ_ANONIMIZADO'
+    default:
+      return originalCNPJ.replace(/[0-9]/g, '*')
+  }
+}
+
+function generatePhoneReplacement(originalPhone: string, technique: string): string {
+  switch (technique) {
+    case 'partial':
+      const numbers = originalPhone.replace(/\D/g, '')
+      if (numbers.length === 11) {
+        return `(${numbers.substring(0, 2)}) *****-${numbers.substring(7)}`
+      }
+      return originalPhone.replace(/\d/g, '*')
+    case 'full':
+      return originalPhone.replace(/\d/g, '*')
+    case 'generic':
+      return '(11) 99999-9999'
+    default:
+      return originalPhone.replace(/\d/g, '*')
+  }
+}
+
+function generateEmailReplacement(originalEmail: string, technique: string): string {
+  switch (technique) {
+    case 'partial':
+      const [username, domain] = originalEmail.split('@')
+      const maskedUsername = username.length > 2 
+        ? username[0] + '*'.repeat(username.length - 2) + username.slice(-1)
+        : '*'.repeat(username.length)
+      return `${maskedUsername}@${domain}`
+    case 'full':
+      return originalEmail.replace(/[a-zA-Z0-9]/g, '*')
+    case 'generic':
+      return 'contato@exemplo.com'
+    default:
+      return originalEmail.replace(/[a-zA-Z0-9]/g, '*')
+  }
+}
 
 // Função para extrair texto de PDF usando biblioteca real
 async function extractTextFromPDFReal(file: File): Promise<string> {
@@ -269,236 +634,6 @@ async function extractTextFromDOCXReal(file: File): Promise<string> {
     console.error('Erro na extração real de DOCX:', error)
     throw error
   }
-}
-
-// Função melhorada para detectar padrões brasileiros com foco em nomes
-function detectPatternsImproved(text: string): DetectedPattern[] {
-  const patterns: DetectedPattern[] = []
-  
-  console.log('🔍 Iniciando detecção avançada de padrões...')
-  
-  // Reset regex lastIndex
-  const resetRegex = (regex: RegExp) => { regex.lastIndex = 0 }
-  
-  // 1. Detectar CPFs com validação melhorada
-  const cpfRegex = /\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b/g
-  let match
-  while ((match = cpfRegex.exec(text)) !== null) {
-    if (isValidCPF(match[0])) {
-      patterns.push({
-        type: 'cpf',
-        value: match[0],
-        startIndex: match.index,
-        endIndex: match.index + match[0].length,
-        confidence: 0.98
-      })
-      console.log(`✅ CPF detectado: ${match[0]}`)
-    }
-  }
-  resetRegex(cpfRegex)
-  
-  // 2. Detectar CNPJs
-  const cnpjRegex = /\b\d{2}\.?\d{3}\.?\d{3}\/?0001-?\d{2}\b/g
-  while ((match = cnpjRegex.exec(text)) !== null) {
-    if (isValidCNPJ(match[0])) {
-      patterns.push({
-        type: 'cnpj',
-        value: match[0],
-        startIndex: match.index,
-        endIndex: match.index + match[0].length,
-        confidence: 0.95
-      })
-      console.log(`✅ CNPJ detectado: ${match[0]}`)
-    }
-  }
-  resetRegex(cnpjRegex)
-  
-  // 3. Detectar telefones brasileiros com padrões melhorados
-  const phoneRegex = /\b(?:\+55\s?)?(?:\(\d{2}\)\s?)?(?:9\s?)?\d{4,5}-?\d{4}\b/g
-  while ((match = phoneRegex.exec(text)) !== null) {
-    const numbers = match[0].replace(/\D/g, '')
-    if (numbers.length >= 10 && numbers.length <= 13) {
-      patterns.push({
-        type: 'phone',
-        value: match[0],
-        startIndex: match.index,
-        endIndex: match.index + match[0].length,
-        confidence: 0.90
-      })
-      console.log(`✅ Telefone detectado: ${match[0]}`)
-    }
-  }
-  resetRegex(phoneRegex)
-  
-  // 4. Detectar emails com validação melhorada
-  const emailRegex = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g
-  while ((match = emailRegex.exec(text)) !== null) {
-    patterns.push({
-      type: 'email',
-      value: match[0],
-      startIndex: match.index,
-      endIndex: match.index + match[0].length,
-      confidence: 0.95
-    })
-    console.log(`✅ Email detectado: ${match[0]}`)
-  }
-  resetRegex(emailRegex)
-  
-  // 5. DETECÇÃO MELHORADA DE NOMES - Múltiplas estratégias
-  console.log('🔍 Iniciando detecção avançada de nomes...')
-  
-  // Estratégia 1: Nomes com 2+ palavras em maiúsculo (mais permissiva)
-  const nameRegexStrict = /\b[A-ZÁÉÍÓÚÂÊÎÔÛÀÈÌÒÙÃÕÇ][A-ZÁÉÍÓÚÂÊÎÔÛÀÈÌÒÙÃÕÇ\s]+(?:\s+[A-ZÁÉÍÓÚÂÊÎÔÛÀÈÌÒÙÃÕÇ][A-ZÁÉÍÓÚÂÊÎÔÛÀÈÌÒÙÃÕÇ]+)+\b/g
-  while ((match = nameRegexStrict.exec(text)) !== null) {
-    const nameValue = match[0].trim()
-    const isValidName = validateNameCandidate(nameValue, 'strict')
-    
-    if (isValidName.isValid) {
-      patterns.push({
-        type: 'name',
-        value: nameValue,
-        startIndex: match.index,
-        endIndex: match.index + nameValue.length,
-        confidence: isValidName.confidence
-      })
-      console.log(`✅ Nome detectado (maiúsculo): ${nameValue} (confiança: ${isValidName.confidence})`)
-    } else {
-      console.log(`❌ Nome rejeitado (maiúsculo): ${nameValue} - Motivo: ${isValidName.reason}`)
-    }
-  }
-  resetRegex(nameRegexStrict)
-  
-  // Estratégia 2: Nomes mistos (primeira letra maiúscula)
-  const nameRegexMixed = /\b[A-ZÁÉÍÓÚÂÊÎÔÛÀÈÌÒÙÃÕÇ][a-záéíóúâêîôûàèìòùãõç]+(?:\s+(?:da|de|do|dos|das|e)?\s*[A-ZÁÉÍÓÚÂÊÎÔÛÀÈÌÒÙÃÕÇ][a-záéíóúâêîôûàèìòùãõç]+)+\b/g
-  while ((match = nameRegexMixed.exec(text)) !== null) {
-    const nameValue = match[0].trim()
-    const isValidName = validateNameCandidate(nameValue, 'mixed')
-    
-    if (isValidName.isValid) {
-      patterns.push({
-        type: 'name',
-        value: nameValue,
-        startIndex: match.index,
-        endIndex: match.index + nameValue.length,
-        confidence: isValidName.confidence
-      })
-      console.log(`✅ Nome detectado (misto): ${nameValue} (confiança: ${isValidName.confidence})`)
-    } else {
-      console.log(`❌ Nome rejeitado (misto): ${nameValue} - Motivo: ${isValidName.reason}`)
-    }
-  }
-  resetRegex(nameRegexMixed)
-  
-  // Estratégia 3: Detecção por contexto
-  const contextualNames = detectNamesByContext(text)
-  contextualNames.forEach(name => {
-    patterns.push(name)
-    console.log(`✅ Nome detectado (contexto): ${name.value} (confiança: ${name.confidence})`)
-  })
-  
-  return patterns.sort((a, b) => a.startIndex - b.startIndex)
-}
-
-// Função para validar candidatos a nome
-function validateNameCandidate(nameValue: string, strategy: 'strict' | 'mixed'): { isValid: boolean; confidence: number; reason?: string } {
-  const words = nameValue.trim().split(/\s+/)
-  
-  // Filtrar palavras muito curtas
-  if (words.some(word => word.length < 2)) {
-    return { isValid: false, confidence: 0, reason: 'Palavras muito curtas' }
-  }
-  
-  // Deve ter pelo menos 2 palavras
-  if (words.length < 2) {
-    return { isValid: false, confidence: 0, reason: 'Menos de 2 palavras' }
-  }
-  
-  // Lista reduzida de palavras comuns para filtrar (mais permissiva)
-  const commonWords = [
-    'BRASIL', 'GOVERNO', 'ESTADO', 'FEDERAL', 'NACIONAL', 'PÚBLICO', 'MUNICIPAL',
-    'TRIBUNAL', 'SUPERIOR', 'JUSTIÇA', 'MINISTÉRIO', 'SECRETARIA',
-    'PROCESSO', 'RECURSO', 'APELAÇÃO', 'MANDADO', 'SEGURANÇA',
-    'CÓDIGO', 'CIVIL', 'PENAL', 'TRABALHISTA', 'COMERCIAL', 'CONSTITUCIONAL',
-    'ARTIGO', 'LEI', 'DECRETO', 'PORTARIA', 'RESOLUÇÃO',
-    'COMPRA', 'VENDA', 'CONTRATO', 'ACORDO', 'FINANCIAMENTO'
-  ]
-  
-  // Verificar se contém palavras comuns
-  const hasCommonWord = words.some(word => 
-    commonWords.includes(word.toUpperCase())
-  )
-  
-  if (hasCommonWord) {
-    return { isValid: false, confidence: 0, reason: 'Contém palavra comum' }
-  }
-  
-  // Verificar padrões que não são nomes
-  const fullName = nameValue.toUpperCase()
-  
-  // Rejeitar se parece com título de documento ou seção
-  if (fullName.includes('CONTRATO') || fullName.includes('DOCUMENTO') || 
-      fullName.includes('ANEXO') || fullName.includes('CLÁUSULA')) {
-    return { isValid: false, confidence: 0, reason: 'Parece título de documento' }
-  }
-  
-  // Aceitar nomes que passaram nos filtros
-  let confidence = 0.85 // Base para nomes válidos
-  
-  // Aumentar confiança para nomes típicos brasileiros
-  if (strategy === 'strict' && words.length >= 3) {
-    confidence = 0.90 // Nomes completos em maiúsculo
-  }
-  
-  // Aumentar confiança se tem padrão típico de nome brasileiro
-  const hasTypicalPattern = words.some(word => 
-    ['SILVA', 'SANTOS', 'OLIVEIRA', 'SOUZA', 'RODRIGUES', 'FERREIRA', 
-     'ALVES', 'PEREIRA', 'LIMA', 'GOMES', 'COSTA', 'RIBEIRO', 'MARTINS',
-     'CARVALHO', 'ALMEIDA', 'LOPES', 'SOARES', 'FERNANDES', 'VIEIRA',
-     'BARBOSA', 'ROCHA', 'DIAS', 'MONTEIRO', 'CARDOSO', 'REIS', 'ARAÚJO'].includes(word.toUpperCase())
-  )
-  
-  if (hasTypicalPattern) {
-    confidence = Math.min(0.95, confidence + 0.1)
-  }
-  
-  return { isValid: true, confidence }
-}
-
-// Função para detectar nomes por contexto
-function detectNamesByContext(text: string): DetectedPattern[] {
-  const contextualPatterns: DetectedPattern[] = []
-  
-  // Padrões contextuais que indicam nomes
-  const contextPatterns = [
-    /(?:nome[:\s]+|sr\.?\s+|sra\.?\s+|senhor\s+|senhora\s+)([A-ZÁÉÍÓÚÂÊÎÔÛÀÈÌÒÙÃÕÇ][A-ZÁÉÍÓÚÂÊÎÔÛÀÈÌÒÙÃÕÇa-záéíóúâêîôûàèìòùãõç\s]+)/gi,
-    /(?:contratante[:\s]+|contratado[:\s]+|cliente[:\s]+|parte[:\s]+)([A-ZÁÉÍÓÚÂÊÎÔÛÀÈÌÒÙÃÕÇ][A-ZÁÉÍÓÚÂÊÎÔÛÀÈÌÒÙÃÕÇa-záéíóúâêîôûàèìòùãõç\s]+)/gi,
-    /(?:requerente[:\s]+|requerido[:\s]+|autor[:\s]+|réu[:\s]+)([A-ZÁÉÍÓÚÂÊÎÔÛÀÈÌÒÙÃÕÇ][A-ZÁÉÍÓÚÂÊÎÔÛÀÈÌÒÙÃÕÇa-záéíóúâêîôûàèìòùãõç\s]+)/gi
-  ]
-  
-  contextPatterns.forEach(regex => {
-    let match
-    while ((match = regex.exec(text)) !== null) {
-      const nameValue = match[1].trim()
-      const words = nameValue.split(/\s+/)
-      
-      // Validar se parece um nome válido
-      if (words.length >= 2 && words.length <= 6) {
-        const endIndex = match.index + match[0].length
-        const startIndex = endIndex - nameValue.length
-        
-        contextualPatterns.push({
-          type: 'name',
-          value: nameValue,
-          startIndex,
-          endIndex,
-          confidence: 0.92 // Alta confiança para nomes encontrados por contexto
-        })
-      }
-    }
-    regex.lastIndex = 0
-  })
-  
-  return contextualPatterns
 }
 
 // Função para gerar PDF real usando jsPDF
@@ -717,70 +852,6 @@ function isValidCNPJ(cnpj: string): boolean {
   let digit2 = remainder < 2 ? 0 : 11 - remainder
   
   return parseInt(numbers[13]) === digit2
-}
-
-function processAnonymization(text: string, patterns: DetectedPattern[], options: ProcessingOptions): string {
-  let anonymizedText = text
-  
-  // Aplicar substituições de acordo com as opções
-  patterns.forEach((pattern, index) => {
-    let replacement = ''
-    
-    switch (pattern.type) {
-      case 'cpf':
-        if (options.cpf === 'partial') {
-          const numbers = pattern.value.replace(/\D/g, '')
-          replacement = `***.${numbers.substring(3, 6)}.***-${numbers.substring(9)}`
-        } else if (options.cpf === 'full') {
-          replacement = '*'.repeat(pattern.value.length)
-        } else {
-          replacement = `CPF_${String(index + 1).padStart(3, '0')}`
-        }
-        break
-        
-      case 'name':
-        if (options.names === 'partial') {
-          const words = pattern.value.split(' ')
-          replacement = words.map(word => 
-            word.length > 2 ? word[0] + '*'.repeat(word.length - 2) + word.slice(-1) : word
-          ).join(' ')
-        } else if (options.names === 'pseudonym') {
-          replacement = `PESSOA_${String(index + 1).padStart(3, '0')}`
-        } else {
-          replacement = `NOME_SINTÉTICO_${index + 1}`
-        }
-        break
-        
-      case 'phone':
-        if (options.phones === 'partial') {
-          const numbers = pattern.value.replace(/\D/g, '')
-          if (numbers.length === 11) {
-            replacement = `(${numbers.substring(0, 2)}) *****-${numbers.substring(7)}`
-          } else {
-            replacement = pattern.value.replace(/\d/g, '*')
-          }
-        } else {
-          replacement = `FONE_${String(index + 1).padStart(3, '0')}`
-        }
-        break
-        
-      case 'email':
-        if (options.emails === 'partial') {
-          const [username, domain] = pattern.value.split('@')
-          const maskedUsername = username.length > 2 
-            ? username[0] + '*'.repeat(username.length - 2) + username.slice(-1)
-            : '*'.repeat(username.length)
-          replacement = `${maskedUsername}@${domain}`
-        } else {
-          replacement = `email${index + 1}@exemplo.com`
-        }
-        break
-    }
-    
-    anonymizedText = anonymizedText.replace(pattern.value, replacement)
-  })
-  
-  return anonymizedText
 }
 
 async function generateAnonymizedPDF(text: string, originalFileName: string): Promise<Blob> {

@@ -1,5 +1,5 @@
-
 import { generateSyntheticCPF, generateSyntheticName, generateSyntheticPhone, generateSyntheticEmail } from './syntheticDataGenerator';
+import { NameAnonymizer } from './nameAnonymizer';
 
 export interface AnonymizationResult {
   original: string;
@@ -86,19 +86,12 @@ export class PseudonymizationTechniques {
     address: 0
   };
 
-  // Pseudônimo para Pessoas
+  // Pseudônimo para Pessoas - ATUALIZADO para usar NameAnonymizer
   static generatePersonPseudonym(originalName: string, keepConsistency: boolean = true): string {
-    if (keepConsistency && this.pseudonymMap.has(originalName)) {
-      return this.pseudonymMap.get(originalName)!;
-    }
-
-    const pseudonym = `PESSOA_${String(++this.counters.person).padStart(3, '0')}`;
-    
-    if (keepConsistency) {
-      this.pseudonymMap.set(originalName, pseudonym);
-    }
-    
-    return pseudonym;
+    return NameAnonymizer.anonymizeName(originalName, {
+      technique: 'pseudonym',
+      keepConsistency
+    });
   }
 
   // Pseudônimo para Empresas
@@ -135,6 +128,7 @@ export class PseudonymizationTechniques {
   static clearMappings(): void {
     this.pseudonymMap.clear();
     this.counters = { person: 0, company: 0, document: 0, address: 0 };
+    NameAnonymizer.resetSession(); // Resetar também o NameAnonymizer
   }
 }
 
@@ -244,16 +238,17 @@ export class GeneralizationTechniques {
   }
 }
 
-// SISTEMA PRINCIPAL DE ANONIMIZAÇÃO
+// SISTEMA PRINCIPAL DE ANONIMIZAÇÃO - ATUALIZADO
 export class AnonymizationEngine {
   private static sessionSalt: string = '';
 
   // Inicializar sessão (gera salt único)
   static initializeSession(): void {
     this.sessionSalt = Date.now().toString(36) + Math.random().toString(36);
+    NameAnonymizer.resetSession(); // Resetar sessão de nomes
   }
 
-  // Aplicar técnica específica
+  // Aplicar técnica específica - MELHORADO para nomes
   static applyTechnique(
     value: string,
     technique: string,
@@ -283,19 +278,38 @@ export class AnonymizationEngine {
           break;
           
         case 'name':
+          // NOVO: Usar NameAnonymizer para todas as técnicas de nome
           switch (technique) {
             case 'partial':
               anonymized = MaskingTechniques.partialMaskingName(value);
               break;
+            case 'generic':
+              anonymized = NameAnonymizer.anonymizeName(value, {
+                technique: 'generic',
+                keepConsistency
+              });
+              break;
             case 'pseudonym':
-              anonymized = PseudonymizationTechniques.generatePersonPseudonym(value, keepConsistency);
+              anonymized = NameAnonymizer.anonymizeName(value, {
+                technique: 'pseudonym',
+                keepConsistency
+              });
+              break;
+            case 'initials':
+              anonymized = NameAnonymizer.anonymizeName(value, {
+                technique: 'initials',
+                keepConsistency
+              });
               break;
             case 'synthetic':
               anonymized = SyntheticSubstitution.generateSyntheticName(value, keepConsistency);
               break;
-            case 'initials':
-              anonymized = value.split(' ').map(word => word.charAt(0) + '.').join(' ');
-              break;
+            default:
+              // Fallback para 'generic' se técnica não reconhecida
+              anonymized = NameAnonymizer.anonymizeName(value, {
+                technique: 'generic',
+                keepConsistency
+              });
           }
           break;
           
@@ -306,6 +320,9 @@ export class AnonymizationEngine {
               break;
             case 'full':
               anonymized = MaskingTechniques.totalMasking(value, preserveFormatting);
+              break;
+            case 'generic':
+              anonymized = '(11) 99999-9999';
               break;
             case 'synthetic':
               anonymized = SyntheticSubstitution.generateSyntheticPhone(value, keepConsistency);
@@ -320,6 +337,9 @@ export class AnonymizationEngine {
               break;
             case 'full':
               anonymized = MaskingTechniques.totalMasking(value, preserveFormatting);
+              break;
+            case 'generic':
+              anonymized = 'contato@exemplo.com';
               break;
             case 'synthetic':
               anonymized = SyntheticSubstitution.generateSyntheticEmail(value, keepConsistency);
@@ -342,6 +362,7 @@ export class AnonymizationEngine {
   // Garantir irreversibilidade - limpar todos os dados temporários
   static ensureIrreversibility(): void {
     PseudonymizationTechniques.clearMappings();
+    NameAnonymizer.resetSession();
     this.sessionSalt = '';
     
     // Força garbage collection se disponível
@@ -349,6 +370,7 @@ export class AnonymizationEngine {
       (window as any).gc();
     }
     
-    console.log('✅ Sessão de anonimização finalizada - dados temporários removidos');
+    const stats = NameAnonymizer.getSessionStats();
+    console.log(`✅ Sessão de anonimização finalizada - ${stats.totalAnonymized} nomes processados, ${stats.consistencyEntries} entradas de consistência removidas`);
   }
 }
