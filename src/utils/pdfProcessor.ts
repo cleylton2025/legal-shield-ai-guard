@@ -1,4 +1,12 @@
 
+import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
+import * as pdfjsLib from 'pdfjs-dist';
+import { TextItem } from 'pdfjs-dist/types/src/display/api';
+import { DetectedPattern } from './patternDetection';
+
+// Configure worker for pdfjs-dist
+pdfjsLib.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjsLib.version}/legacy/build/pdf.worker.min.js`;
+
 export interface PDFTextItem {
   text: string;
   x: number;
@@ -15,20 +23,17 @@ export interface SensitiveMatch {
 }
 
 export class PDFProcessor {
+  /**
+   * Extract text with coordinates from PDF file
+   */
   static async extractTextWithCoordinates(pdfFile: File): Promise<PDFTextItem[]> {
     try {
-      // Importar pdfjs-dist dinamicamente
-      const pdfjsLib = await import('pdfjs-dist');
-      
-      // Configurar worker
-      pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js`;
-      
       const arrayBuffer = await pdfFile.arrayBuffer();
       const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
       
       const allItems: PDFTextItem[] = [];
       
-      // Processar cada página
+      // Process each page
       for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
         const page = await pdf.getPage(pageNum);
         const textContent = await page.getTextContent();
@@ -36,52 +41,55 @@ export class PDFProcessor {
         
         textContent.items.forEach((item: any) => {
           if (item.str && item.str.trim()) {
-            // Calcular posição real no PDF
+            // Calculate real position in PDF
             const transform = item.transform;
             const x = transform[4];
-            const y = viewport.height - transform[5]; // Inverter Y para PDF coordinate system
+            const y = viewport.height - transform[5]; // Invert Y for PDF coordinate system
             
             allItems.push({
               text: item.str,
               x: x,
               y: y,
               width: item.width || 0,
-              height: item.height || 12, // Altura padrão
+              height: item.height || 12, // Default height
               pageNumber: pageNum
             });
           }
         });
       }
       
-      console.log(`📄 PDF processado: ${pdf.numPages} páginas, ${allItems.length} itens de texto`);
+      console.log(`📄 PDF processed: ${pdf.numPages} pages, ${allItems.length} text items`);
       return allItems;
     } catch (error) {
-      console.error('❌ Erro ao extrair texto com coordenadas:', error);
-      throw new Error('Falha na extração de texto com coordenadas do PDF');
+      console.error('❌ Error extracting text with coordinates:', error);
+      throw new Error('Failed to extract text with coordinates from PDF');
     }
   }
   
+  /**
+   * Map detected patterns to PDF coordinates
+   */
   static mapSensitiveDataToCoordinates(
     textItems: PDFTextItem[], 
-    detectedPatterns: any[]
+    detectedPatterns: DetectedPattern[]
   ): SensitiveMatch[] {
     const matches: SensitiveMatch[] = [];
     
     detectedPatterns.forEach(pattern => {
       const matchingItems: PDFTextItem[] = [];
       
-      // Procurar itens de texto que contenham o padrão detectado
+      // Look for text items that contain the detected pattern
       const patternWords = pattern.value.split(/\s+/);
       
-      textItems.forEach((item, index) => {
-        // Verificar se este item contém parte do padrão
+      textItems.forEach((item) => {
+        // Check if this item contains part of the pattern
         const itemText = item.text.trim();
         
         if (patternWords.some(word => itemText.includes(word)) || itemText.includes(pattern.value)) {
           matchingItems.push(item);
         }
         
-        // Para CPFs e outros padrões formatados, verificar match direto
+        // For CPFs and other formatted patterns, check direct match
         if (item.text.includes(pattern.value)) {
           matchingItems.push(item);
         }
@@ -90,67 +98,56 @@ export class PDFProcessor {
       if (matchingItems.length > 0) {
         matches.push({
           originalText: pattern.value,
-          anonymizedText: '', // Será preenchido durante anonimização
+          anonymizedText: `[${pattern.type.toUpperCase()}_ANONIMIZADO]`,
           items: matchingItems
         });
       }
     });
     
-    console.log(`🎯 Mapeamento concluído: ${matches.length} dados sensíveis mapeados para coordenadas`);
+    console.log(`🎯 Mapping completed: ${matches.length} sensitive data mapped to coordinates`);
     return matches;
   }
   
+  /**
+   * Apply redactions to PDF using black rectangles
+   */
   static async applyRedactionsToPDF(
     originalFile: File, 
     matches: SensitiveMatch[]
   ): Promise<Blob> {
     try {
-      // Importar pdf-lib dinamicamente
-      const { PDFDocument, rgb, StandardFonts } = await import('pdf-lib');
-      
       const arrayBuffer = await originalFile.arrayBuffer();
       const pdfDoc = await PDFDocument.load(arrayBuffer);
       const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
       
-      console.log(`🎨 Aplicando tarjas em ${matches.length} localizações...`);
+      console.log(`🎨 Applying redactions at ${matches.length} locations...`);
       
       matches.forEach(match => {
         match.items.forEach(item => {
-          const page = pdfDoc.getPage(item.pageNumber - 1); // PDF pages são 0-indexed
+          const page = pdfDoc.getPage(item.pageNumber - 1); // PDF pages are 0-indexed
           
-          // Calcular área da tarja com margem
+          // Calculate redaction area with padding
           const padding = 2;
           const rectX = Math.max(0, item.x - padding);
           const rectY = Math.max(0, item.y - padding);
           const rectWidth = item.width + (padding * 2);
           const rectHeight = item.height + (padding * 2);
           
-          // Desenhar tarja preta
+          // Draw black rectangle
           page.drawRectangle({
             x: rectX,
             y: rectY,
             width: rectWidth,
             height: rectHeight,
-            color: rgb(0, 0, 0), // Preto
+            color: rgb(0, 0, 0), // Black
             opacity: 1.0
           });
           
-          // Opcionalmente, desenhar texto anonimizado sobre a tarja
-          if (match.anonymizedText && match.anonymizedText !== match.originalText) {
-            page.drawText(match.anonymizedText, {
-              x: rectX + 2,
-              y: rectY + 2,
-              size: Math.min(10, item.height - 2),
-              font: font,
-              color: rgb(1, 1, 1) // Branco
-            });
-          }
-          
-          console.log(`🔨 Tarja aplicada: "${item.text}" na página ${item.pageNumber}`);
+          console.log(`🔨 Redaction applied: "${item.text}" on page ${item.pageNumber}`);
         });
       });
       
-      // Adicionar marca d'água discreta
+      // Add discrete watermark
       const totalPages = pdfDoc.getPageCount();
       for (let i = 0; i < totalPages; i++) {
         const page = pdfDoc.getPage(i);
@@ -169,11 +166,34 @@ export class PDFProcessor {
       const pdfBytes = await pdfDoc.save();
       const blob = new Blob([pdfBytes], { type: 'application/pdf' });
       
-      console.log('✅ PDF com tarjas gerado com sucesso');
+      console.log('✅ PDF with redactions generated successfully');
       return blob;
     } catch (error) {
-      console.error('❌ Erro ao aplicar tarjas no PDF:', error);
-      throw new Error('Falha na aplicação de tarjas no PDF');
+      console.error('❌ Error applying redactions to PDF:', error);
+      throw new Error('Failed to apply redactions to PDF');
+    }
+  }
+
+  /**
+   * Extract text from PDF (simple text extraction)
+   */
+  static async extractTextFromPDF(file: File): Promise<string> {
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      let fullText = "";
+
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const textContent = await page.getTextContent();
+        const pageText = textContent.items.map((item) => (item as TextItem).str).join(" ");
+        fullText += pageText + "\n";
+      }
+
+      return fullText;
+    } catch (error) {
+      console.error('❌ Error extracting text from PDF:', error);
+      throw new Error('Failed to extract text from PDF');
     }
   }
 }

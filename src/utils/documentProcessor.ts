@@ -1,6 +1,7 @@
 
 import { detectPatterns, DetectedPattern } from './patternDetection';
 import { AnonymizationEngine, AnonymizationResult } from './anonymizationTechniques';
+import { PDFProcessor } from './pdfProcessor';
 
 export interface ProcessingOptions {
   cpf: string;
@@ -32,23 +33,23 @@ export class DocumentProcessor {
     text: string, 
     options: ProcessingOptions
   ): Promise<ProcessingResult> {
-    console.log('🔍 Iniciando processamento do documento...');
+    console.log('🔍 Starting document processing...');
     
-    // Inicializar sessão de anonimização
+    // Initialize anonymization session
     AnonymizationEngine.initializeSession();
     
-    // 1. Detectar padrões no texto
+    // 1. Detect patterns in text
     const detectedPatterns = detectPatterns(text);
-    console.log(`📊 Padrões detectados: ${detectedPatterns.length}`);
+    console.log(`📊 Patterns detected: ${detectedPatterns.length}`);
     
-    // 2. Preparar mapeamento de substituições
+    // 2. Prepare replacement mappings
     const replacements = new Map<string, string>();
     const anonymizationResults: AnonymizationResult[] = [];
     
-    // 3. Processar cada tipo de dado detectado
+    // 3. Process each type of detected data
     let processedText = text;
     
-    // Processar CPFs
+    // Process CPFs
     const cpfPatterns = detectedPatterns.filter(p => p.type === 'cpf');
     for (const pattern of cpfPatterns) {
       if (!replacements.has(pattern.value)) {
@@ -67,7 +68,7 @@ export class DocumentProcessor {
       }
     }
     
-    // Processar Nomes
+    // Process Names
     const namePatterns = detectedPatterns.filter(p => p.type === 'name');
     for (const pattern of namePatterns) {
       if (!replacements.has(pattern.value)) {
@@ -86,7 +87,7 @@ export class DocumentProcessor {
       }
     }
     
-    // Processar Telefones
+    // Process Phones
     const phonePatterns = detectedPatterns.filter(p => p.type === 'phone');
     for (const pattern of phonePatterns) {
       if (!replacements.has(pattern.value)) {
@@ -105,7 +106,7 @@ export class DocumentProcessor {
       }
     }
     
-    // Processar E-mails
+    // Process Emails
     const emailPatterns = detectedPatterns.filter(p => p.type === 'email');
     for (const pattern of emailPatterns) {
       if (!replacements.has(pattern.value)) {
@@ -124,14 +125,14 @@ export class DocumentProcessor {
       }
     }
     
-    // 4. Aplicar substituições no texto
+    // 4. Apply replacements to text
     for (const [original, anonymized] of replacements) {
       const escapedOriginal = original.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       const regex = new RegExp(escapedOriginal, 'g');
       processedText = processedText.replace(regex, anonymized);
     }
     
-    // 5. Gerar resumo
+    // 5. Generate summary
     const summary = {
       totalPatterns: detectedPatterns.length,
       cpfCount: cpfPatterns.length,
@@ -140,9 +141,9 @@ export class DocumentProcessor {
       emailCount: emailPatterns.length
     };
     
-    console.log('✅ Processamento concluído:', summary);
+    console.log('✅ Processing completed:', summary);
     
-    // 6. Garantir irreversibilidade (limpar dados temporários)
+    // 6. Ensure irreversibility (clear temporary data)
     setTimeout(() => {
       AnonymizationEngine.ensureIrreversibility();
     }, 1000);
@@ -157,220 +158,152 @@ export class DocumentProcessor {
     };
   }
   
-  // Extrair texto de arquivo PDF (simulação)
+  // Extract text from PDF file (simulation)
   static async extractTextFromPDF(file: File): Promise<string> {
-    console.log(`📄 Extraindo texto do PDF: ${file.name}`);
-    
-    // Simulação baseada no nome do arquivo
-    const fileName = file.name.toLowerCase();
-    
-    if (fileName.includes('contrato')) {
-      return `CONTRATO DE PRESTAÇÃO DE SERVIÇOS
-Extraído de: ${file.name}
-
-Contratante: João Silva Santos
-CPF: 123.456.789-09
-Telefone: (11) 99999-1234
-E-mail: joao.silva@email.com
-
-Contratado: Maria Santos Oliveira  
-CPF: 987.654.321-00
-Telefone: (21) 98888-5555
-E-mail: maria.santos@empresa.com.br
-
-Valor do contrato: R$ 50.000,00
-Data de início: 15/06/2023
-Processo nº: 1234567-89.2023.8.26.0001
-
-Este é um documento sensível que contém dados pessoais.`;
-    }
-    
-    if (fileName.includes('processo')) {
-      return `PROCESSO JUDICIAL
-Extraído de: ${file.name}
-
-Requerente: Ana Paula Costa
-CPF: 111.222.333-44
-Telefone: (11) 97777-8888
-E-mail: ana.costa@exemplo.com
-
-Requerido: Carlos Eduardo Lima
-CPF: 444.555.666-77
-Telefone: (21) 96666-7777
-E-mail: carlos.lima@teste.com.br
-
-Número do Processo: 0001234-56.2023.8.26.0100
-Valor da Causa: R$ 25.000,00
-Data de Distribuição: ${new Date().toLocaleDateString('pt-BR')}`;
-    }
-    
-    return `DOCUMENTO PDF
-Extraído de: ${file.name}
-
-Este documento contém informações pessoais:
-- Nome: Roberto Oliveira Silva
-- CPF: 999.888.777-66
-- Telefone: (11) 95555-4444
-- E-mail: roberto.silva@documento.com
-
-Endereço: Rua das Flores, 123 - São Paulo, SP
-CEP: 01234-567
-
-Data de criação: ${new Date().toLocaleDateString('pt-BR')}
-Documento processado automaticamente.`;
+    console.log(`📄 Extracting text from PDF: ${file.name}`);
+    return await PDFProcessor.extractTextFromPDF(file);
   }
   
-  // Extrair texto de arquivo DOCX (simulação)
+  // Extract text from DOCX file (simulation)
   static async extractTextFromDOCX(file: File): Promise<string> {
-    console.log(`📝 Extraindo texto do DOCX: ${file.name}`);
+    console.log(`📝 Extracting text from DOCX: ${file.name}`);
     
     const fileName = file.name.toLowerCase();
     
     if (fileName.includes('relatorio')) {
       return `RELATÓRIO MENSAL
-Extraído de: ${file.name}
+Extracted from: ${file.name}
 
-Funcionário: Patricia Santos Ferreira
+Employee: Patricia Santos Ferreira
 CPF: 555.666.777-88
-Telefone: (11) 94444-3333
-E-mail: patricia.ferreira@empresa.com
+Phone: (11) 94444-3333
+Email: patricia.ferreira@empresa.com
 
 Supervisor: Fernando Costa Almeida
 CPF: 222.333.444-55
-E-mail: fernando.almeida@empresa.com
+Email: fernando.almeida@empresa.com
 
-Período: ${new Date().toLocaleDateString('pt-BR')}
-Departamento: Recursos Humanos
+Period: ${new Date().toLocaleDateString('pt-BR')}
+Department: Human Resources
 
-Este relatório contém informações confidenciais da empresa.`;
+This report contains confidential company information.`;
     }
     
-    return `DOCUMENTO WORD
-Extraído de: ${file.name}
+    return `WORD DOCUMENT
+Extracted from: ${file.name}
 
-Participantes:
+Participants:
 - Lucia Maria dos Santos (CPF: 777.888.999-00)
-- Telefone: (21) 93333-2222
-- E-mail: lucia.santos@teste.com
+- Phone: (21) 93333-2222
+- Email: lucia.santos@teste.com
 
 - Miguel Angel Rodriguez (CPF: 123.321.456-78)
-- Telefone: (11) 92222-1111  
-- E-mail: miguel.rodriguez@exemplo.com
+- Phone: (11) 92222-1111  
+- Email: miguel.rodriguez@exemplo.com
 
-Data: ${new Date().toLocaleDateString('pt-BR')}
-Status: Documento processado com sucesso.`;
+Date: ${new Date().toLocaleDateString('pt-BR')}
+Status: Document processed successfully.`;
   }
   
-  // Criar arquivo de texto anonimizado para PDF
-  static async createAnonymizedPDF(originalText: string, anonymizedText: string): Promise<Blob> {
-    console.log('📋 Criando PDF anonimizado (versão texto)');
+  // Create anonymized PDF with redactions
+  static async createAnonymizedPDF(file: File, detectedPatterns: DetectedPattern[]): Promise<Blob> {
+    console.log('📋 Creating anonymized PDF with redactions');
     
-    const pdfContent = `DOCUMENTO PDF ANONIMIZADO
-==================================================
-
-AVISO: Este documento foi processado por um sistema de anonimização.
-Todos os dados pessoais sensíveis foram removidos ou substituídos.
-
-Data de processamento: ${new Date().toLocaleString('pt-BR')}
-
-==================================================
-CONTEÚDO ANONIMIZADO:
-==================================================
-
-${anonymizedText}
-
-==================================================
-INFORMAÇÕES DO PROCESSAMENTO:
-==================================================
-
-- Formato original: PDF
-- Método de anonimização: Substituição de texto
-- Dados processados: CPFs, nomes, telefones, e-mails
-- Consistência mantida: Sim
-
-Este arquivo mantém a estrutura do documento original
-mas com todos os dados sensíveis anonimizados.`;
-
-    return new Blob([pdfContent], { type: 'text/plain' });
+    try {
+      // Extract text with coordinates
+      const textItems = await PDFProcessor.extractTextWithCoordinates(file);
+      
+      // Map sensitive data to coordinates
+      const matches = PDFProcessor.mapSensitiveDataToCoordinates(textItems, detectedPatterns);
+      
+      // Apply redactions
+      const anonymizedPDF = await PDFProcessor.applyRedactionsToPDF(file, matches);
+      
+      return anonymizedPDF;
+    } catch (error) {
+      console.error('❌ Error creating anonymized PDF with redactions:', error);
+      // Fallback to text version
+      return new Blob(['PDF processing failed. Please try again.'], { type: 'text/plain' });
+    }
   }
   
-  // Criar arquivo de texto anonimizado para DOCX
+  // Create anonymized text file for DOCX
   static async createAnonymizedDOCX(originalText: string, anonymizedText: string): Promise<Blob> {
-    console.log('📋 Criando DOCX anonimizado (versão texto)');
+    console.log('📋 Creating anonymized DOCX (text version)');
     
-    const docxContent = `DOCUMENTO WORD ANONIMIZADO
+    const docxContent = `WORD DOCUMENT ANONYMIZED
 ==================================================
 
-AVISO: Este documento foi processado por um sistema de anonimização.
-Todos os dados pessoais sensíveis foram removidos ou substituídos.
+WARNING: This document was processed by an anonymization system.
+All sensitive personal data has been removed or replaced.
 
-Data de processamento: ${new Date().toLocaleString('pt-BR')}
+Processing date: ${new Date().toLocaleString('pt-BR')}
 
 ==================================================
-CONTEÚDO ANONIMIZADO:
+ANONYMIZED CONTENT:
 ==================================================
 
 ${anonymizedText}
 
 ==================================================
-INFORMAÇÕES DO PROCESSAMENTO:
+PROCESSING INFORMATION:
 ==================================================
 
-- Formato original: Microsoft Word (DOCX)
-- Método de anonimização: Substituição de texto
-- Dados processados: CPFs, nomes, telefones, e-mails
-- Formatação: Preservada quando possível
+- Original format: Microsoft Word (DOCX)
+- Anonymization method: Text replacement
+- Data processed: CPFs, names, phones, emails
+- Formatting: Preserved when possible
 
-Este arquivo contém o mesmo conteúdo do documento original
-mas com todos os dados pessoais anonimizados.`;
+This file contains the same content as the original document
+but with all personal data anonymized.`;
 
     return new Blob([docxContent], { type: 'text/plain' });
   }
   
-  // Método principal para processar arquivo
+  // Main method to process file
   static async processFile(
     file: File, 
     options: ProcessingOptions
   ): Promise<ProcessingResult> {
-    console.log(`📁 Processando arquivo: ${file.name} (${file.type})`);
+    console.log(`📁 Processing file: ${file.name} (${file.type})`);
     
     try {
       let text = '';
       let originalFormat = file.type;
       
       if (file.type === 'text/plain') {
-        console.log('📄 Processando arquivo de texto...');
+        console.log('📄 Processing text file...');
         text = await file.text();
       } else if (file.type === 'application/pdf') {
-        console.log('📄 Processando arquivo PDF...');
+        console.log('📄 Processing PDF file...');
         text = await this.extractTextFromPDF(file);
       } else if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
-        console.log('📄 Processando arquivo DOCX...');
+        console.log('📄 Processing DOCX file...');
         text = await this.extractTextFromDOCX(file);
       } else {
-        throw new Error(`Tipo de arquivo não suportado: ${file.type}`);
+        throw new Error(`Unsupported file type: ${file.type}`);
       }
       
-      console.log(`📝 Texto extraído: ${text.length} caracteres`);
+      console.log(`📝 Text extracted: ${text.length} characters`);
       
       const result = await this.processDocument(text, options);
       result.originalFormat = originalFormat;
       
-      // Criar arquivo processado baseado no formato original
+      // Create processed file based on original format
       if (file.type === 'application/pdf') {
-        result.processedFile = await this.createAnonymizedPDF(result.originalText, result.anonymizedText);
+        result.processedFile = await this.createAnonymizedPDF(file, result.detectedPatterns);
       } else if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
         result.processedFile = await this.createAnonymizedDOCX(result.originalText, result.anonymizedText);
       } else {
         result.processedFile = new Blob([result.anonymizedText], { type: 'text/plain' });
       }
       
-      console.log('✅ Arquivo processado com sucesso!');
+      console.log('✅ File processed successfully!');
       return result;
       
     } catch (error) {
-      console.error('❌ Erro ao processar arquivo:', error);
-      throw new Error(`Erro ao processar arquivo: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
+      console.error('❌ Error processing file:', error);
+      throw new Error(`Error processing file: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 }
