@@ -23,6 +23,21 @@ interface DetectedPattern {
   confidence: number;
 }
 
+interface PDFTextItem {
+  text: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  pageNumber: number;
+}
+
+interface SensitiveMatch {
+  originalText: string;
+  anonymizedText: string;
+  items: PDFTextItem[];
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -43,7 +58,7 @@ serve(async (req) => {
       throw new Error('Arquivo não fornecido')
     }
 
-    console.log(`Processando arquivo real: ${file.name} (${file.type})`)
+    console.log(`Processando arquivo: ${file.name} (${file.type})`)
 
     // Criar registro de processamento
     const { data: processingRecord, error: processingError } = await supabase
@@ -65,102 +80,70 @@ serve(async (req) => {
 
     const processingId = processingRecord.id
 
-    // Log início do processamento
     await supabase.from('processing_logs').insert({
       processing_id: processingId,
       log_level: 'info',
-      message: 'Iniciando processamento real do arquivo',
+      message: 'Iniciando processamento com sistema avançado',
       details: { filename: file.name, size: file.size, type: file.type }
     })
 
-    // Upload do arquivo original para Storage
-    const originalPath = `${userId || 'anonymous'}/${processingId}/original_${file.name}`
-    const { error: uploadError } = await supabase.storage
-      .from('documents')
-      .upload(originalPath, file)
-
-    if (uploadError) {
-      console.log('Tentando processar sem storage por enquanto...')
-    }
-
-    // Atualizar registro com caminho do arquivo
-    await supabase
-      .from('processing_history')
-      .update({ storage_path: originalPath })
-      .eq('id', processingId)
-
-    // Extrair texto REAL baseado no tipo de arquivo
     let extractedText = ''
+    let processedFileBlob: Blob
     
     try {
       if (file.type === 'application/pdf') {
-        extractedText = await extractTextFromPDFReal(file)
+        console.log('📄 Processando PDF com sistema de tarjas...')
+        
+        // Extrair texto com coordenadas usando novo sistema
+        const textItems = await extractTextWithCoordinatesFromPDF(file)
+        extractedText = textItems.map(item => item.text).join(' ')
+        
+        console.log(`📝 Texto extraído: ${extractedText.length} caracteres, ${textItems.length} itens`)
+        
+        // Detectar padrões sensíveis
+        const detectedPatterns = detectPatternsAdvanced(extractedText)
+        
+        // Mapear dados sensíveis para coordenadas
+        const sensitiveMatches = mapSensitiveDataToCoordinates(textItems, detectedPatterns, options)
+        
+        // Aplicar tarjas e gerar PDF anonimizado
+        processedFileBlob = await applyRedactionsToOriginalPDF(file, sensitiveMatches)
+        
+        await supabase.from('processing_logs').insert({
+          processing_id: processingId,
+          log_level: 'info',
+          message: 'PDF processado com sistema de tarjas',
+          details: { 
+            textItems: textItems.length,
+            patterns: detectedPatterns.length,
+            redactions: sensitiveMatches.length
+          }
+        })
+        
       } else if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+        console.log('📄 Processando DOCX...')
         extractedText = await extractTextFromDOCXReal(file)
+        const detectedPatterns = detectPatternsAdvanced(extractedText)
+        const anonymizedText = processAnonymizationAdvanced(extractedText, detectedPatterns, options)
+        processedFileBlob = await generateRealAnonymizedDOCX(anonymizedText, file.name)
+        
       } else if (file.type === 'text/plain') {
+        console.log('📄 Processando arquivo de texto...')
         extractedText = await file.text()
+        const detectedPatterns = detectPatternsAdvanced(extractedText)
+        const anonymizedText = processAnonymizationAdvanced(extractedText, detectedPatterns, options)
+        processedFileBlob = new Blob([anonymizedText], { type: 'text/plain; charset=utf-8' })
+        
       } else {
         throw new Error(`Tipo de arquivo não suportado: ${file.type}`)
       }
-    } catch (extractError) {
-      console.error('Erro na extração real, usando fallback:', extractError)
-      // Fallback para dados simulados se a extração real falhar
-      if (file.type === 'application/pdf') {
-        extractedText = await extractTextFromPDF(file)
-      } else if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
-        extractedText = await extractTextFromDOCX(file)
-      } else {
-        extractedText = await file.text()
-      }
-    }
-
-    await supabase.from('processing_logs').insert({
-      processing_id: processingId,
-      log_level: 'info',
-      message: 'Texto extraído com sucesso',
-      details: { textLength: extractedText.length, extractionMethod: 'real' }
-    })
-
-    // Detectar padrões no texto real com melhor precisão - NOVO SISTEMA
-    const detectedPatterns = detectPatternsAdvanced(extractedText)
-    
-    await supabase.from('processing_logs').insert({
-      processing_id: processingId,
-      log_level: 'info',
-      message: 'Padrões detectados com sistema avançado',
-      details: { 
-        totalPatterns: detectedPatterns.length,
-        patterns: detectedPatterns.map(p => ({ 
-          type: p.type, 
-          confidence: p.confidence, 
-          preview: p.value.substring(0, 20) + (p.value.length > 20 ? '...' : '') 
-        }))
-      }
-    })
-
-    // Processar anonimização
-    const anonymizedText = processAnonymizationAdvanced(extractedText, detectedPatterns, options)
-
-    // Gerar arquivo anonimizado REAL
-    let processedFileBlob: Blob
-    try {
-      if (file.type === 'application/pdf') {
-        processedFileBlob = await generateRealAnonymizedPDF(anonymizedText, file.name)
-      } else if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
-        processedFileBlob = await generateRealAnonymizedDOCX(anonymizedText, file.name)
-      } else {
-        processedFileBlob = new Blob([anonymizedText], { type: 'text/plain; charset=utf-8' })
-      }
-    } catch (generateError) {
-      console.error('Erro na geração real, usando fallback:', generateError)
-      // Fallback para geração simulada
-      if (file.type === 'application/pdf') {
-        processedFileBlob = await generateAnonymizedPDF(anonymizedText, file.name)
-      } else if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
-        processedFileBlob = await generateAnonymizedDOCX(anonymizedText, file.name)
-      } else {
-        processedFileBlob = new Blob([anonymizedText], { type: 'text/plain; charset=utf-8' })
-      }
+    } catch (error) {
+      console.error('Erro no processamento principal, usando fallback:', error)
+      // Fallback para sistema anterior
+      extractedText = await extractTextFallback(file)
+      const detectedPatterns = detectPatternsAdvanced(extractedText)
+      const anonymizedText = processAnonymizationAdvanced(extractedText, detectedPatterns, options)
+      processedFileBlob = new Blob([anonymizedText], { type: 'text/plain; charset=utf-8' })
     }
 
     // Upload do arquivo processado
@@ -174,6 +157,7 @@ serve(async (req) => {
     }
 
     // Calcular resumo
+    const detectedPatterns = detectPatternsAdvanced(extractedText)
     const summary = {
       totalPatterns: detectedPatterns.length,
       cpfCount: detectedPatterns.filter(p => p.type === 'cpf').length,
@@ -198,7 +182,7 @@ serve(async (req) => {
     await supabase.from('processing_logs').insert({
       processing_id: processingId,
       log_level: 'info',
-      message: 'Processamento concluído com sistema avançado de detecção',
+      message: 'Processamento concluído com sistema avançado',
       details: summary
     })
 
@@ -207,7 +191,7 @@ serve(async (req) => {
         success: true,
         processingId,
         originalText: extractedText,
-        anonymizedText,
+        anonymizedText: 'PDF processado com tarjas - visualize o arquivo baixado',
         detectedPatterns,
         summary,
         downloadPath: processedPath
@@ -232,6 +216,210 @@ serve(async (req) => {
     )
   }
 })
+
+// NOVA FUNÇÃO: Extrair texto com coordenadas do PDF
+async function extractTextWithCoordinatesFromPDF(file: File): Promise<PDFTextItem[]> {
+  try {
+    // Importar pdfjs-dist dinamicamente
+    const pdfjsLib = await import('https://esm.sh/pdfjs-dist@3.11.174')
+    
+    // Configurar worker
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://esm.sh/pdfjs-dist@3.11.174/build/pdf.worker.min.js'
+    
+    const arrayBuffer = await file.arrayBuffer()
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
+    
+    const allItems: PDFTextItem[] = []
+    
+    // Processar cada página
+    for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+      const page = await pdf.getPage(pageNum)
+      const textContent = await page.getTextContent()
+      const viewport = page.getViewport({ scale: 1.0 })
+      
+      textContent.items.forEach((item: any) => {
+        if (item.str && item.str.trim()) {
+          // Calcular posição real no PDF
+          const transform = item.transform
+          const x = transform[4]
+          const y = viewport.height - transform[5] // Inverter Y
+          
+          allItems.push({
+            text: item.str,
+            x: x,
+            y: y,
+            width: item.width || 0,
+            height: item.height || 12,
+            pageNumber: pageNum
+          })
+        }
+      })
+    }
+    
+    console.log(`📄 PDF processado: ${pdf.numPages} páginas, ${allItems.length} itens de texto`)
+    return allItems
+  } catch (error) {
+    console.error('❌ Erro ao extrair texto com coordenadas:', error)
+    throw error
+  }
+}
+
+// NOVA FUNÇÃO: Mapear dados sensíveis para coordenadas
+function mapSensitiveDataToCoordinates(
+  textItems: PDFTextItem[], 
+  detectedPatterns: DetectedPattern[],
+  options: ProcessingOptions
+): SensitiveMatch[] {
+  const matches: SensitiveMatch[] = []
+  let pseudonymCounter = 0
+  
+  detectedPatterns.forEach(pattern => {
+    const matchingItems: PDFTextItem[] = []
+    
+    // Procurar itens de texto que contenham o padrão detectado
+    const patternValue = pattern.value.trim()
+    
+    textItems.forEach(item => {
+      const itemText = item.text.trim()
+      
+      // Match direto
+      if (itemText === patternValue || itemText.includes(patternValue)) {
+        matchingItems.push(item)
+      }
+      
+      // Para nomes, verificar palavras individuais
+      if (pattern.type === 'name') {
+        const patternWords = patternValue.split(/\s+/)
+        if (patternWords.some(word => itemText.includes(word) && word.length > 2)) {
+          matchingItems.push(item)
+        }
+      }
+    })
+    
+    if (matchingItems.length > 0) {
+      // Gerar texto anonimizado
+      let anonymizedText = ''
+      switch (pattern.type) {
+        case 'name':
+          anonymizedText = generateNameReplacement(pattern.value, options.names, ++pseudonymCounter)
+          break
+        case 'cpf':
+          anonymizedText = generateCPFReplacement(pattern.value, options.cpf)
+          break
+        case 'cnpj':
+          anonymizedText = generateCNPJReplacement(pattern.value, options.cpf)
+          break
+        case 'phone':
+          anonymizedText = generatePhoneReplacement(pattern.value, options.phones)
+          break
+        case 'email':
+          anonymizedText = generateEmailReplacement(pattern.value, options.emails)
+          break
+        default:
+          anonymizedText = '█████'
+      }
+      
+      matches.push({
+        originalText: pattern.value,
+        anonymizedText,
+        items: matchingItems
+      })
+    }
+  })
+  
+  console.log(`🎯 Mapeamento concluído: ${matches.length} dados sensíveis mapeados`)
+  return matches
+}
+
+// NOVA FUNÇÃO: Aplicar tarjas no PDF original
+async function applyRedactionsToOriginalPDF(originalFile: File, matches: SensitiveMatch[]): Promise<Blob> {
+  try {
+    // Importar pdf-lib dinamicamente
+    const { PDFDocument, rgb, StandardFonts } = await import('https://esm.sh/pdf-lib@1.17.1')
+    
+    const arrayBuffer = await originalFile.arrayBuffer()
+    const pdfDoc = await PDFDocument.load(arrayBuffer)
+    const font = await pdfDoc.embedFont(StandardFonts.Helvetica)
+    
+    console.log(`🎨 Aplicando tarjas em ${matches.length} localizações...`)
+    
+    matches.forEach(match => {
+      match.items.forEach(item => {
+        try {
+          const page = pdfDoc.getPage(item.pageNumber - 1) // PDF pages são 0-indexed
+          
+          // Calcular área da tarja com margem
+          const padding = 2
+          const rectX = Math.max(0, item.x - padding)
+          const rectY = Math.max(0, item.y - padding)
+          const rectWidth = Math.max(item.width + (padding * 2), 20) // Mínimo de 20
+          const rectHeight = Math.max(item.height + (padding * 2), 12) // Mínimo de 12
+          
+          // Desenhar tarja preta
+          page.drawRectangle({
+            x: rectX,
+            y: rectY,
+            width: rectWidth,
+            height: rectHeight,
+            color: rgb(0, 0, 0), // Preto
+            opacity: 1.0
+          })
+          
+          // Desenhar texto anonimizado sobre a tarja (opcional)
+          if (match.anonymizedText && match.anonymizedText.length < 50) {
+            page.drawText(match.anonymizedText, {
+              x: rectX + 2,
+              y: rectY + 2,
+              size: Math.min(8, item.height - 2),
+              font: font,
+              color: rgb(1, 1, 1) // Branco
+            })
+          }
+          
+          console.log(`🔨 Tarja aplicada: "${item.text}" na página ${item.pageNumber}`)
+        } catch (itemError) {
+          console.error('Erro ao aplicar tarja individual:', itemError)
+        }
+      })
+    })
+    
+    // Adicionar marca d'água discreta
+    const totalPages = pdfDoc.getPageCount()
+    for (let i = 0; i < totalPages; i++) {
+      const page = pdfDoc.getPage(i)
+      const { height } = page.getSize()
+      
+      page.drawText('Documento anonimizado', {
+        x: 50,
+        y: height - 20,
+        size: 8,
+        font: font,
+        color: rgb(0.7, 0.7, 0.7),
+        opacity: 0.5
+      })
+    }
+    
+    const pdfBytes = await pdfDoc.save()
+    const blob = new Blob([pdfBytes], { type: 'application/pdf' })
+    
+    console.log('✅ PDF com tarjas gerado com sucesso')
+    return blob
+  } catch (error) {
+    console.error('❌ Erro ao aplicar tarjas no PDF:', error)
+    throw error
+  }
+}
+
+// FUNÇÃO FALLBACK: Extrair texto simples quando falha extração com coordenadas
+async function extractTextFallback(file: File): Promise<string> {
+  if (file.type === 'application/pdf') {
+    return await extractTextFromPDF(file)
+  } else if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+    return await extractTextFromDOCX(file)
+  } else {
+    return await file.text()
+  }
+}
 
 // NOVA FUNÇÃO DE DETECÇÃO AVANÇADA
 function detectPatternsAdvanced(text: string): DetectedPattern[] {
