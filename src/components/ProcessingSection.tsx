@@ -8,14 +8,14 @@ import { DocumentProcessor, ProcessingOptions, ProcessingResult } from "@/utils/
 
 interface ProcessingSectionProps {
   file: File | null;
-  onProcess: (result: ProcessingResult) => void;
   options: ProcessingOptions;
+  onProcessingComplete: (result: ProcessingResult) => void;
 }
 
 const ProcessingSection = ({ 
   file, 
-  onProcess,
-  options
+  options,
+  onProcessingComplete
 }: ProcessingSectionProps) => {
   const { toast } = useToast();
   const [isProcessing, setIsProcessing] = useState(false);
@@ -38,7 +38,7 @@ const ProcessingSection = ({
       console.log('🚀 Starting file processing with advanced PDF redaction...');
       const result = await DocumentProcessor.processFile(file, options);
       setProcessingResult(result);
-      onProcess(result);
+      onProcessingComplete(result);
       
       toast({
         title: "Sucesso!",
@@ -58,7 +58,7 @@ const ProcessingSection = ({
 
   const handlePreview = () => {
     if (processingResult) {
-      onProcess(processingResult);
+      onProcessingComplete(processingResult);
     }
   };
 
