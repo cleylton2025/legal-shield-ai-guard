@@ -6,16 +6,14 @@ import HeroSection from "@/components/HeroSection";
 import FileUpload from "@/components/FileUpload";
 import AnonymizationConfig from "@/components/AnonymizationConfig";
 import ProcessingSection from "@/components/ProcessingSection";
-import ProcessingResults from "@/components/ProcessingResults";
 import ProcessingHistory from "@/components/ProcessingHistory";
 import Footer from "@/components/Footer";
 import AuthButton from "@/components/AuthButton";
 import { useAuth } from "@/contexts/AuthContext";
-import { ProcessingOptions, ProcessingResult } from "@/utils/documentProcessor";
+import { ProcessingOptions } from "@/utils/documentProcessor";
 
 const Index = () => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [processingResult, setProcessingResult] = useState<ProcessingResult | null>(null);
   const [anonymizationOptions, setAnonymizationOptions] = useState<ProcessingOptions>({
     cpf: "partial",
     names: "pseudonym",
@@ -24,6 +22,7 @@ const Index = () => {
     keepConsistency: true,
     preserveFormatting: true
   });
+  const [refreshHistory, setRefreshHistory] = useState(0);
 
   const { user, loading } = useAuth();
   const navigate = useNavigate();
@@ -37,13 +36,13 @@ const Index = () => {
 
   const handleFileSelect = (file: File) => {
     setSelectedFile(file);
-    setProcessingResult(null); // Reset previous results
     console.log("Arquivo selecionado:", file.name, file.size, file.type);
   };
 
-  const handleProcessingComplete = (result: ProcessingResult) => {
-    setProcessingResult(result);
-    console.log("Processamento concluído:", result.summary);
+  const handleProcessingComplete = (processingId: string) => {
+    console.log("Processamento concluído, ID:", processingId);
+    // Trigger history refresh
+    setRefreshHistory(prev => prev + 1);
   };
 
   // Show loading while checking authentication
@@ -84,15 +83,10 @@ const Index = () => {
             options={anonymizationOptions}
             onProcessingComplete={handleProcessingComplete}
           />
-          
-          {processingResult && selectedFile && (
-            <ProcessingResults 
-              result={processingResult} 
-              fileName={selectedFile.name}
-            />
-          )}
 
-          <ProcessingHistory />
+          <div data-history-section>
+            <ProcessingHistory key={refreshHistory} />
+          </div>
         </div>
       </main>
       
