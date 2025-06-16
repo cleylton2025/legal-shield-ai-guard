@@ -23,6 +23,7 @@ const ProcessingSection = ({
   const { user } = useAuth();
   const [isProcessing, setIsProcessing] = useState(false);
   const [isComplete, setIsComplete] = useState(false);
+  const [processingResult, setProcessingResult] = useState<any>(null);
 
   const disabled = !file || !user;
 
@@ -38,10 +39,11 @@ const ProcessingSection = ({
 
     setIsProcessing(true);
     setIsComplete(false);
+    setProcessingResult(null);
     
     toast({
       title: "Iniciando processamento...",
-      description: "Seu documento está sendo enviado para nosso sistema seguro.",
+      description: "Seu documento está sendo enviado para processamento seguro no servidor.",
     });
 
     try {
@@ -67,6 +69,7 @@ const ProcessingSection = ({
 
       console.log('✅ Processamento concluído:', data);
       
+      setProcessingResult(data);
       setIsComplete(true);
       onProcessingComplete(data.processingId);
       
@@ -108,7 +111,7 @@ const ProcessingSection = ({
         <div className="text-center py-8">
           <p className="text-gray-600 mb-6">
             Clique no botão abaixo para anonimizar seu documento com as configurações selecionadas.
-            O processamento será feito em nosso servidor seguro.
+            O processamento será feito em nosso servidor seguro para garantir máxima performance e segurança.
           </p>
           <Button
             onClick={handleProcess}
@@ -130,7 +133,7 @@ const ProcessingSection = ({
           </Button>
           {isProcessing && (
             <p className="text-sm text-gray-500 mt-4">
-              O processamento pode levar alguns segundos. Por favor, aguarde...
+              O processamento está sendo realizado no servidor. Por favor, aguarde...
             </p>
           )}
         </div>
@@ -145,6 +148,15 @@ const ProcessingSection = ({
               Todos os dados sensíveis foram anonimizados conforme suas configurações.
               O arquivo está disponível no histórico abaixo.
             </p>
+            {processingResult?.summary && (
+              <div className="mt-2 text-sm text-green-700">
+                <strong>Padrões detectados:</strong> {processingResult.summary.totalPatterns} 
+                (CPF: {processingResult.summary.cpfCount}, 
+                Nomes: {processingResult.summary.nameCount}, 
+                Telefones: {processingResult.summary.phoneCount}, 
+                E-mails: {processingResult.summary.emailCount})
+              </div>
+            )}
           </div>
 
           <div className="flex flex-col sm:flex-row gap-3">

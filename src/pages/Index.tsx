@@ -40,9 +40,12 @@ const Index = () => {
   };
 
   const handleProcessingComplete = (processingId: string) => {
-    console.log("Processamento concluído, ID:", processingId);
-    // Trigger history refresh
+    console.log("Processamento concluído no servidor, ID:", processingId);
+    // Trigger history refresh to show the new processed document
     setRefreshHistory(prev => prev + 1);
+    
+    // Optionally clear the selected file to encourage new uploads
+    // setSelectedFile(null);
   };
 
   // Show loading while checking authentication
